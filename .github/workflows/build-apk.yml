@@ -1,3 +1,4 @@
+```yaml
 name: Build Android APK
 
 on:
@@ -7,48 +8,51 @@ on:
       - main
 
 jobs:
-
   build:
-
+    name: Build APK
     runs-on: ubuntu-latest
 
     steps:
-
-      - name: Checkout
+      - name: Checkout source
         uses: actions/checkout@v4
 
-      - name: Set up JDK 17
+      - name: Set up Java 17
         uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
+          cache: gradle
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Install Android SDK
+      - name: Install Android SDK packages
         run: |
-          sdkmanager "platform-tools"
-          sdkmanager "platforms;android-36"
-          sdkmanager "build-tools;36.0.0"
+          sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"
+          yes | sdkmanager --licenses || true
 
-      - name: Generate Gradle Wrapper
-        run: gradle wrapper --gradle-version 8.13
+      - name: Create Gradle Wrapper
+        run: |
+          gradle wrapper --gradle-version 8.13
 
       - name: Make Gradle executable
-        run: chmod +x gradlew
+        run: chmod +x ./gradlew
+
+      - name: Show Gradle version
+        run: ./gradlew --version
 
       - name: Build Debug APK
-        run: ./gradlew :app:assembleDebug --stacktrace
+        run: ./gradlew assembleDebug --stacktrace
 
       - name: Verify APK
         run: |
-          ls -lh app/build/outputs/apk/debug/
-          test -f app/build/outputs/apk/debug/app-debug.apk
+          echo "APK files:"
+          find app/build/outputs/apk -type f -name "*.apk" -print
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: BilingualSubtitleViewer-debug
-          path: app/build/outputs/apk/debug/app-debug.apk
+          path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
+```
