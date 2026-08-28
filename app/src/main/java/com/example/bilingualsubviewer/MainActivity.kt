@@ -1,5 +1,6 @@
 package com.example.bilingualsubviewer
 
+import android.app.ComponentCaller
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
@@ -79,8 +80,9 @@ class MainActivity : AppCompatActivity() {
         syncHandler.post(syncRunnable)
     }
 
-    override fun onNewIntent(intent: Intent) {
-        super.onNewIntent(intent)
+    @Suppress("DEPRECATION")
+    override fun onNewIntent(intent: Intent, caller: ComponentCaller) {
+        super.onNewIntent(intent, caller)
         setIntent(intent)
         if (intent.action == Intent.ACTION_VIEW) intent.data?.let { loadSubtitle(it) }
     }
@@ -122,7 +124,7 @@ class MainActivity : AppCompatActivity() {
             KeyEvent.KEYCODE_SLASH -> { subtitleOffsetMs = 0; syncSubtitleToPlayer(); showStatus("Subtitle sync reset"); return true }
             KeyEvent.KEYCODE_LEFT_BRACKET -> { showStatus("A = current subtitle"); return true }
             KeyEvent.KEYCODE_RIGHT_BRACKET -> { showStatus("B = current subtitle"); return true }
-            KeyEvent.KEYCODE_ENTER -> { playerView.toggleControllerVisibility(); return true }
+            KeyEvent.KEYCODE_ENTER -> { if (playerView.isControllerVisible) playerView.hideController() else playerView.showController(); return true }
         }
         return super.dispatchKeyEvent(event)
     }
