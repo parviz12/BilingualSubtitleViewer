@@ -48,6 +48,20 @@
             android:text="@string/hide_video"
             android:textAllCaps="false"
             android:visibility="gone" />
+        <Button
+            android:id="@+id/speedButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="1.0x"
+            android:textAllCaps="false"
+            android:visibility="gone" />
+        <Button
+            android:id="@+id/loopButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/loop_off"
+            android:textAllCaps="false"
+            android:visibility="gone" />
         <TextView
             android:id="@+id/fileNameText"
             android:layout_width="0dp"
@@ -118,6 +132,16 @@
         android:paddingTop="4dp"
         android:paddingBottom="4dp"
         android:background="@color/panel">
+        <TextView
+            android:id="@+id/statusText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            android:textColor="@color/text_primary"
+            android:visibility="gone"
+            android:padding="3dp" />
         <TextView
             android:id="@+id/currentSubtitleText"
             android:layout_width="match_parent"
