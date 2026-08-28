@@ -19,9 +19,9 @@ jobs:
           fetch-depth: 1
           ref: main
 
-      - name: Patch MainActivity search selection
-        shell: python
+      - name: Patch MainActivity
         run: |
+          python3 <<'PY'
           from pathlib import Path
 
           path = Path('app/src/main/java/com/example/bilingualsubviewer/MainActivity.kt')
@@ -59,8 +59,6 @@ jobs:
 
         emptyText.text = getString(R.string.open_subtitle_message)
 
-        // Never select the first search result automatically. A result becomes the
-        // selected conversation only after the user explicitly taps it.
         if (clearingSearch && selectedForRestore != null) {
             currentPosition = selectedForRestore
             explicitlySelectedPosition = selectedForRestore
@@ -91,9 +89,6 @@ jobs:
           new_select = '''        currentPosition = i
         explicitlySelectedPosition = i
         if (searchQuery.isNotBlank()) {
-            // Remember the exact result the user tapped so clearing the search
-            // restores the full list at this same conversation instead of jumping
-            // back to the first subtitle.
             searchSelectionPosition = i
         }
         repeatCount = 0
@@ -101,8 +96,6 @@ jobs:
           if old_select in text and 'searchSelectionPosition = i' not in text:
               text = text.replace(old_select, new_select, 1)
 
-          # While restoring the full list, do not let the 100-ms player synchronizer
-          # immediately scroll the RecyclerView away from the restored conversation.
           old_sync = '''            if (i != currentPosition) {
                 currentPosition = i
                 updateUi()
@@ -120,7 +113,8 @@ jobs:
           text = text.replace(old_sync, new_sync, 1)
 
           path.write_text(text, encoding='utf-8')
-          print('Search-selection persistence patch applied.')
+          print('Patch applied')
+          PY
 
       - name: Commit patch
         run: |
@@ -128,7 +122,7 @@ jobs:
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add app/src/main/java/com/example/bilingualsubviewer/MainActivity.kt
           if git diff --cached --quiet; then
-            echo 'No changes needed.'
+            echo 'No source changes needed.'
             exit 0
           fi
           git commit -m 'Fix search result selection persistence'
