@@ -1,7 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-
 <resources>
-
     <string name="app_name">Bilingual Subtitle Viewer</string>
     <string name="open">Open SRT</string>
     <string name="previous">◀ Previous</string>
@@ -11,5 +9,6 @@
     <string name="subtitle_file">Subtitle</string>
     <string name="empty_file">The subtitle file is empty.</string>
     <string name="no_subtitles">No valid subtitles were found.</string>
-
+    <string name="search_hint">Search by line number or conversation…</string>
+    <string name="no_search_results">No matching conversations found.</string>
 </resources>
