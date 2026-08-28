@@ -51,7 +51,7 @@ class MainActivity : AppCompatActivity() {
     private var videoHidden = false
     private var loopSubtitle = false
     private var repeatCount = 0
-    private var repeatTarget = 0
+    private var repeatTarget = 5
     private var playbackSpeed = 1.0f
     private var lastNonDefaultSpeed = 1.0f
     private var subtitleOffsetMs = 0L
@@ -145,6 +145,10 @@ class MainActivity : AppCompatActivity() {
         loopButton = findViewById(R.id.loopButton)
         statusText = findViewById(R.id.statusText)
 
+        // Keep Media3 controls (Play/Pause + Timeline + time) available at all times.
+        playerView.setControllerShowTimeoutMs(0)
+        playerView.setControllerHideOnTouch(false)
+
         subtitleList.layoutManager = LinearLayoutManager(this)
         subtitleAdapter = SubtitleAdapter(emptyList(), emptyList()) { selectSubtitle(it) }
         subtitleList.adapter = subtitleAdapter
@@ -191,12 +195,18 @@ class MainActivity : AppCompatActivity() {
             videoToggleButton.visibility = View.VISIBLE
             speedButton.visibility = View.VISIBLE
             loopButton.visibility = View.VISIBLE
+            playerView.visibility = View.VISIBLE
+            playerView.showController()
         } catch (exception: Exception) { Toast.makeText(this, "Media error: ${exception.message}", Toast.LENGTH_LONG).show() }
     }
 
     private fun toggleVideo() {
         videoHidden = !videoHidden
-        playerView.visibility = if (videoHidden) View.GONE else View.VISIBLE
+        // Do NOT hide PlayerView itself: its controller contains the Timeline and Play/Pause.
+        // Hide only the video surface so audio + controller remain usable in Audio Only mode.
+        playerView.visibility = View.VISIBLE
+        playerView.videoSurfaceView?.visibility = if (videoHidden) View.INVISIBLE else View.VISIBLE
+        playerView.showController()
         videoToggleButton.text = if (videoHidden) getString(R.string.show_video) else getString(R.string.hide_video)
         showStatus(if (videoHidden) "🎧 Audio Only — video hidden" else "🎬 Video shown")
     }
@@ -269,11 +279,11 @@ class MainActivity : AppCompatActivity() {
             if (loopSubtitle && time >= subtitles[index].endTime - 80 && !loopGuard) {
                 loopGuard = true
                 repeatCount++
-                if (repeatTarget > 0 && repeatCount >= repeatTarget) {
+                if (repeatCount >= repeatTarget) {
                     loopSubtitle = false
                     repeatCount = 0
                     updateLoopButton()
-                    showStatus("▶ Loop finished")
+                    showStatus("▶ Loop finished (5 repeats)")
                 } else {
                     p.seekTo((subtitles[index].startTime - subtitleOffsetMs).coerceAtLeast(0))
                     p.playWhenReady = true
@@ -295,9 +305,9 @@ class MainActivity : AppCompatActivity() {
         if (subtitles.isEmpty() || currentPosition !in subtitles.indices) return
         loopSubtitle = !loopSubtitle
         repeatCount = 0
-        repeatTarget = 0
+        repeatTarget = 5
         updateLoopButton()
-        showStatus(if (loopSubtitle) "🔁 Loop ON — current conversation" else "⏹ Loop OFF")
+        showStatus(if (loopSubtitle) "🔁 Loop ON — 5 repeats" else "⏹ Loop OFF")
     }
 
     private fun updateLoopButton() { loopButton.text = if (loopSubtitle) getString(R.string.loop_on) else getString(R.string.loop_off) }
