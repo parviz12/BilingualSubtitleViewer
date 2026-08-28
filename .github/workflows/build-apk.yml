@@ -27,17 +27,23 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Install Gradle 9.5
+      - name: Download Gradle 8.13
         run: |
-          curl -L -o gradle.zip https://services.gradle.org/distributions/gradle-9.5-bin.zip
+          curl -fL -o gradle.zip https://services.gradle.org/distributions/gradle-8.13-bin.zip
           unzip -q gradle.zip
-          echo "$PWD/gradle-9.5/bin" >> "$GITHUB_PATH"
+          echo "$PWD/gradle-8.13/bin" >> "$GITHUB_PATH"
 
-      - name: Generate Gradle Wrapper
-        run: gradle wrapper --gradle-version 9.5
+      - name: Generate Gradle Wrapper 8.13
+        run: |
+          gradle wrapper --gradle-version 8.13
+
+      - name: Verify Gradle Version
+        run: |
+          ./gradlew --version
 
       - name: Build Debug APK
-        run: ./gradlew :app:assembleDebug --no-daemon
+        run: |
+          ./gradlew :app:assembleDebug --no-daemon
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
