@@ -53,10 +53,10 @@ class MainActivity : AppCompatActivity() {
         updateUi()
     }
 
-    override fun onNewIntent(intent: Intent?) {
+    override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        if (intent?.action == Intent.ACTION_VIEW) intent.data?.let { loadSubtitle(it) }
+        if (intent.action == Intent.ACTION_VIEW) intent.data?.let { loadSubtitle(it) }
     }
 
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
