@@ -1,5 +1,6 @@
 package com.example.bilingualsubviewer
 
+import android.app.AlertDialog
 import android.app.ComponentCaller
 import android.content.Intent
 import android.content.res.Configuration
@@ -206,10 +207,6 @@ class MainActivity : AppCompatActivity() {
         if(subtitles.isEmpty())return
         val time=p.currentPosition+subtitleOffsetMs
         val selectedEnd=subtitles.getOrNull(currentPosition)?.endTime
-
-        // When a conversation was explicitly tapped, stop exactly at its end.
-        // This check must happen before calculating the active subtitle, otherwise
-        // an immediately following subtitle can become active and playback continues.
         if(playSingleSubtitle && selectedEnd != null && time >= selectedEnd){
             p.seekTo((selectedEnd-subtitleOffsetMs).coerceAtLeast(0))
             p.pause()
@@ -217,7 +214,6 @@ class MainActivity : AppCompatActivity() {
             showStatus("⏹ Conversation finished")
             return
         }
-
         val i=subtitles.indexOfLast{it.startTime<=time}
         if(i>=0&&time<subtitles[i].endTime){
             if(i!=currentPosition&&!playSingleSubtitle){currentPosition=i;updateUi();scrollToSubtitle(subtitles[i])}
