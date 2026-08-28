@@ -54,6 +54,9 @@ class MainActivity : AppCompatActivity() {
     private var subtitles: List<Subtitle> = emptyList()
     private var currentPosition = -1
     private var explicitlySelectedPosition = -1
+    // Stable anchor for the subtitle explicitly selected from a filtered/search result.
+    // It is deliberately separate from currentPosition, which is allowed to move during playback.
+    private var searchSelectedPosition = -1
     private var searchQuery = ""
     private var videoHidden = false
     private var loopSubtitle = false
@@ -122,10 +125,12 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun scrollToSubtitleIfPossible() {
-        val position = explicitlySelectedPosition.takeIf { it in subtitles.indices } ?: currentPosition
-        if (position in subtitles.indices) {
-            subtitleList.post { scrollToSubtitle(subtitles[position]) }
+        val position = when {
+            searchQuery.isNotBlank() && searchSelectedPosition in subtitles.indices -> searchSelectedPosition
+            explicitlySelectedPosition in subtitles.indices -> explicitlySelectedPosition
+            else -> currentPosition
         }
+        if (position in subtitles.indices) subtitleList.post { scrollToSubtitle(subtitles[position]) }
     }
 
     @Suppress("DEPRECATION")
@@ -135,10 +140,7 @@ class MainActivity : AppCompatActivity() {
         if (intent.action == Intent.ACTION_VIEW) intent.data?.let(::loadSubtitle)
     }
 
-    override fun onStop() {
-        super.onStop()
-        player?.pause()
-    }
+    override fun onStop() { super.onStop(); player?.pause() }
 
     override fun onDestroy() {
         handler.removeCallbacksAndMessages(null)
@@ -306,6 +308,7 @@ class MainActivity : AppCompatActivity() {
             subtitles = parsed
             currentPosition = 0
             explicitlySelectedPosition = 0
+            searchSelectedPosition = -1
             repeatCount = 0
             playSingleSubtitle = false
             subtitleOffsetMs = 0
@@ -323,11 +326,11 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun applySearch() {
-        val selectedBeforeFilter = explicitlySelectedPosition.takeIf { it in subtitles.indices } ?: currentPosition
+        val wasSearching = searchQuery.isNotBlank()
         val filtered = filteredSubtitles()
         subtitleAdapter.setItems(filtered)
 
-        if (searchQuery.isNotBlank() && filtered.isEmpty()) {
+        if (wasSearching && filtered.isEmpty()) {
             emptyText.text = getString(R.string.no_search_results)
             emptyText.visibility = View.VISIBLE
             return
@@ -335,21 +338,37 @@ class MainActivity : AppCompatActivity() {
 
         emptyText.text = getString(R.string.open_subtitle_message)
 
-        // Searching must NEVER change the currently selected subtitle automatically.
-        // Only an explicit tap on a result is allowed to change currentPosition.
-        if (selectedBeforeFilter in subtitles.indices) {
-            currentPosition = selectedBeforeFilter
-            subtitleAdapter.setCurrentIndex(subtitles[currentPosition].index)
+        // If a search result was explicitly selected, keep that exact subtitle as the
+        // anchor while the query is edited or cleared. Playback synchronization may
+        // change currentPosition, but must never overwrite this search anchor.
+        val anchor = if (wasSearching && searchSelectedPosition in subtitles.indices) {
+            searchSelectedPosition
+        } else if (!wasSearching && searchSelectedPosition in subtitles.indices) {
+            searchSelectedPosition
+        } else {
+            explicitlySelectedPosition.takeIf { it in subtitles.indices } ?: currentPosition
+        }
+
+        if (anchor in subtitles.indices) {
+            currentPosition = anchor
+            explicitlySelectedPosition = anchor
+            subtitleAdapter.setCurrentIndex(subtitles[anchor].index)
         }
         updateUi()
 
-        if (searchQuery.isBlank() && selectedBeforeFilter in subtitles.indices) {
+        if (!wasSearching && searchSelectedPosition in subtitles.indices) {
+            val anchorPosition = searchSelectedPosition
             subtitleList.post {
-                subtitleList.layoutManager?.let { manager ->
-                    val visible = subtitleAdapter.visiblePositionOf(subtitles[selectedBeforeFilter])
-                    if (visible >= 0) manager.scrollToPosition(visible)
+                val visible = subtitleAdapter.visiblePositionOf(subtitles[anchorPosition])
+                if (visible >= 0) {
+                    subtitleList.layoutManager?.scrollToPosition(visible)
                 }
             }
+            // The selection has now been restored into the normal full list.
+            // Keep explicitlySelectedPosition as the stable last explicit selection,
+            // but clear the search-only anchor so later normal typing/playback does not
+            // unexpectedly jump back to it.
+            searchSelectedPosition = -1
         }
     }
 
@@ -363,6 +382,7 @@ class MainActivity : AppCompatActivity() {
         if (i !in subtitles.indices) return
         currentPosition = i
         explicitlySelectedPosition = i
+        if (searchQuery.isNotBlank()) searchSelectedPosition = i
         repeatCount = 0
         playSingleSubtitle = singlePlay
         val s = subtitles[i]
