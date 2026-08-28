@@ -20,6 +20,7 @@ import androidx.core.view.updatePadding
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.ui.PlayerControlView
 import androidx.media3.ui.PlayerView
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -37,6 +38,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var emptyText: TextView
     private lateinit var searchInput: EditText
     private lateinit var playerView: PlayerView
+    private lateinit var playerControls: PlayerControlView
     private lateinit var mediaButton: Button
     private lateinit var videoToggleButton: Button
     private lateinit var speedButton: Button
@@ -61,7 +63,7 @@ class MainActivity : AppCompatActivity() {
     private val syncRunnable = object : Runnable {
         override fun run() {
             syncSubtitleToPlayer()
-            syncHandler.postDelayed(this, 150)
+            syncHandler.postDelayed(this, 50)
         }
     }
     private val hideStatusRunnable = Runnable { statusText.visibility = View.GONE }
@@ -124,7 +126,7 @@ class MainActivity : AppCompatActivity() {
             KeyEvent.KEYCODE_SLASH -> { subtitleOffsetMs = 0; syncSubtitleToPlayer(); showStatus("Subtitle sync reset"); return true }
             KeyEvent.KEYCODE_LEFT_BRACKET -> { showStatus("A = current subtitle"); return true }
             KeyEvent.KEYCODE_RIGHT_BRACKET -> { showStatus("B = current subtitle"); return true }
-            KeyEvent.KEYCODE_ENTER -> { playerView.performClick(); return true }
+            KeyEvent.KEYCODE_ENTER -> { playerControls.performClick(); return true }
         }
         return super.dispatchKeyEvent(event)
     }
@@ -139,15 +141,12 @@ class MainActivity : AppCompatActivity() {
         emptyText = findViewById(R.id.emptyText)
         searchInput = findViewById(R.id.searchInput)
         playerView = findViewById(R.id.playerView)
+        playerControls = findViewById(R.id.playerControls)
         mediaButton = findViewById(R.id.mediaButton)
         videoToggleButton = findViewById(R.id.videoToggleButton)
         speedButton = findViewById(R.id.speedButton)
         loopButton = findViewById(R.id.loopButton)
         statusText = findViewById(R.id.statusText)
-
-        // Keep Media3 controls (Play/Pause + Timeline + time) available at all times.
-        playerView.setControllerShowTimeoutMs(0)
-        playerView.setControllerHideOnTouch(false)
 
         subtitleList.layoutManager = LinearLayoutManager(this)
         subtitleAdapter = SubtitleAdapter(emptyList(), emptyList()) { selectSubtitle(it) }
@@ -184,7 +183,10 @@ class MainActivity : AppCompatActivity() {
             if (player == null) {
                 player = ExoPlayer.Builder(this).build().also { exo ->
                     playerView.player = exo
-                    exo.addListener(object : Player.Listener { override fun onPlaybackStateChanged(playbackState: Int) { syncSubtitleToPlayer() } })
+                    playerControls.player = exo
+                    exo.addListener(object : Player.Listener {
+                        override fun onPlaybackStateChanged(playbackState: Int) { syncSubtitleToPlayer() }
+                    })
                 }
             }
             player?.setMediaItem(MediaItem.fromUri(uri))
@@ -195,18 +197,14 @@ class MainActivity : AppCompatActivity() {
             videoToggleButton.visibility = View.VISIBLE
             speedButton.visibility = View.VISIBLE
             loopButton.visibility = View.VISIBLE
-            playerView.visibility = View.VISIBLE
-            playerView.showController()
+            playerControls.visibility = View.VISIBLE
         } catch (exception: Exception) { Toast.makeText(this, "Media error: ${exception.message}", Toast.LENGTH_LONG).show() }
     }
 
     private fun toggleVideo() {
         videoHidden = !videoHidden
-        // Do NOT hide PlayerView itself: its controller contains the Timeline and Play/Pause.
-        // Hide only the video surface so audio + controller remain usable in Audio Only mode.
-        playerView.visibility = View.VISIBLE
-        playerView.videoSurfaceView?.visibility = if (videoHidden) View.INVISIBLE else View.VISIBLE
-        playerView.showController()
+        playerView.visibility = if (videoHidden) View.GONE else View.VISIBLE
+        playerControls.visibility = if (player != null) View.VISIBLE else View.GONE
         videoToggleButton.text = if (videoHidden) getString(R.string.show_video) else getString(R.string.hide_video)
         showStatus(if (videoHidden) "🎧 Audio Only — video hidden" else "🎬 Video shown")
     }
@@ -258,6 +256,7 @@ class MainActivity : AppCompatActivity() {
     private fun selectSubtitle(position: Int) {
         if (position !in subtitles.indices) return
         currentPosition = position
+        repeatCount = 0
         val subtitle = subtitles[position]
         player?.seekTo((subtitle.startTime - subtitleOffsetMs).coerceAtLeast(0))
         player?.playWhenReady = true
@@ -276,19 +275,19 @@ class MainActivity : AppCompatActivity() {
                 updateUi()
                 scrollToSubtitle(subtitles[index])
             }
-            if (loopSubtitle && time >= subtitles[index].endTime - 80 && !loopGuard) {
+            if (loopSubtitle && time >= subtitles[index].endTime - 250 && !loopGuard) {
                 loopGuard = true
-                repeatCount++
-                if (repeatCount >= repeatTarget) {
+                if (repeatCount + 1 >= repeatTarget) {
                     loopSubtitle = false
                     repeatCount = 0
                     updateLoopButton()
-                    showStatus("▶ Loop finished (5 repeats)")
+                    showStatus("▶ Loop finished — 5 plays")
                 } else {
+                    repeatCount++
                     p.seekTo((subtitles[index].startTime - subtitleOffsetMs).coerceAtLeast(0))
                     p.playWhenReady = true
                 }
-                syncHandler.postDelayed({ loopGuard = false }, 250)
+                syncHandler.postDelayed({ loopGuard = false }, 350)
             }
         }
     }
@@ -307,7 +306,7 @@ class MainActivity : AppCompatActivity() {
         repeatCount = 0
         repeatTarget = 5
         updateLoopButton()
-        showStatus(if (loopSubtitle) "🔁 Loop ON — 5 repeats" else "⏹ Loop OFF")
+        showStatus(if (loopSubtitle) "🔁 Loop ON — 5 plays" else "⏹ Loop OFF")
     }
 
     private fun updateLoopButton() { loopButton.text = if (loopSubtitle) getString(R.string.loop_on) else getString(R.string.loop_off) }
