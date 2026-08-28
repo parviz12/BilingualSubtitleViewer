@@ -15,6 +15,9 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.updatePadding
+import androidx.media3.common.MediaItem
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.ui.PlayerView
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import java.io.BufferedReader
@@ -31,15 +34,24 @@ class MainActivity : AppCompatActivity() {
     private lateinit var nextButton: Button
     private lateinit var emptyText: TextView
     private lateinit var searchInput: EditText
+    private lateinit var playerView: PlayerView
+    private lateinit var mediaButton: Button
+    private lateinit var videoToggleButton: Button
     private lateinit var gestureDetector: GestureDetector
     private lateinit var subtitleAdapter: SubtitleAdapter
 
+    private var player: ExoPlayer? = null
     private var subtitles: List<Subtitle> = emptyList()
     private var currentPosition = -1
     private var searchQuery = ""
+    private var videoHidden = false
 
     private val openDocument = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
         uri?.let { loadSubtitle(it) }
+    }
+
+    private val openMedia = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
+        uri?.let { loadMedia(it) }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -59,6 +71,17 @@ class MainActivity : AppCompatActivity() {
         if (intent.action == Intent.ACTION_VIEW) intent.data?.let { loadSubtitle(it) }
     }
 
+    override fun onStop() {
+        super.onStop()
+        player?.pause()
+    }
+
+    override fun onDestroy() {
+        player?.release()
+        player = null
+        super.onDestroy()
+    }
+
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
         if (::gestureDetector.isInitialized) gestureDetector.onTouchEvent(event)
         return super.dispatchTouchEvent(event)
@@ -73,8 +96,12 @@ class MainActivity : AppCompatActivity() {
         nextButton = findViewById(R.id.nextButton)
         emptyText = findViewById(R.id.emptyText)
         searchInput = findViewById(R.id.searchInput)
+        playerView = findViewById(R.id.playerView)
+        mediaButton = findViewById(R.id.mediaButton)
+        videoToggleButton = findViewById(R.id.videoToggleButton)
+
         subtitleList.layoutManager = LinearLayoutManager(this)
-        subtitleAdapter = SubtitleAdapter(emptyList(), subtitles) { selectSubtitle(it) }
+        subtitleAdapter = SubtitleAdapter(emptyList(), emptyList()) { selectSubtitle(it) }
         subtitleList.adapter = subtitleAdapter
 
         searchInput.addTextChangedListener(object : android.text.TextWatcher {
@@ -114,8 +141,33 @@ class MainActivity : AppCompatActivity() {
         findViewById<Button>(R.id.openButton).setOnClickListener {
             openDocument.launch(arrayOf("application/x-subrip", "text/srt", "text/plain", "application/octet-stream", "*/*"))
         }
+        mediaButton.setOnClickListener {
+            openMedia.launch(arrayOf("video/*", "audio/*", "application/octet-stream"))
+        }
+        videoToggleButton.setOnClickListener { toggleVideo() }
         previousButton.setOnClickListener { previousSubtitle() }
         nextButton.setOnClickListener { nextSubtitle() }
+    }
+
+    private fun loadMedia(uri: Uri) {
+        try {
+            if (player == null) {
+                player = ExoPlayer.Builder(this).build().also { playerView.player = it }
+            }
+            player?.setMediaItem(MediaItem.fromUri(uri))
+            player?.prepare()
+            player?.playWhenReady = true
+            fileNameText.text = uri.lastPathSegment ?: getString(R.string.media_file)
+            videoToggleButton.visibility = View.VISIBLE
+        } catch (exception: Exception) {
+            Toast.makeText(this, "Media error: ${exception.message}", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun toggleVideo() {
+        videoHidden = !videoHidden
+        playerView.visibility = if (videoHidden) View.GONE else View.VISIBLE
+        videoToggleButton.text = if (videoHidden) getString(R.string.show_video) else getString(R.string.hide_video)
     }
 
     private fun loadSubtitle(uri: Uri) {
@@ -136,7 +188,7 @@ class MainActivity : AppCompatActivity() {
             currentPosition = 0
             searchQuery = ""
             searchInput.setText("")
-            fileNameText.text = uri.lastPathSegment ?: getString(R.string.subtitle_file)
+            if (player == null) fileNameText.text = uri.lastPathSegment ?: getString(R.string.subtitle_file)
             subtitleAdapter.setAllItems(subtitles)
             applySearch()
         } catch (exception: Exception) {
@@ -175,23 +227,20 @@ class MainActivity : AppCompatActivity() {
     private fun selectSubtitle(position: Int) {
         if (position !in subtitles.indices) return
         currentPosition = position
-        val visiblePosition = subtitleAdapter.visiblePositionOf(subtitles[position])
+        val subtitle = subtitles[position]
+        player?.seekTo(subtitle.startTime)
+        player?.playWhenReady = true
+        val visiblePosition = subtitleAdapter.visiblePositionOf(subtitle)
         if (visiblePosition >= 0) subtitleList.smoothScrollToPosition(visiblePosition)
         updateUi()
     }
 
     private fun nextSubtitle() {
-        if (subtitles.isNotEmpty() && currentPosition < subtitles.lastIndex) {
-            currentPosition++
-            selectSubtitle(currentPosition)
-        }
+        if (subtitles.isNotEmpty() && currentPosition < subtitles.lastIndex) selectSubtitle(currentPosition + 1)
     }
 
     private fun previousSubtitle() {
-        if (subtitles.isNotEmpty() && currentPosition > 0) {
-            currentPosition--
-            selectSubtitle(currentPosition)
-        }
+        if (subtitles.isNotEmpty() && currentPosition > 0) selectSubtitle(currentPosition - 1)
     }
 
     private fun updateUi() {
@@ -218,8 +267,7 @@ class MainActivity : AppCompatActivity() {
     ) : RecyclerView.Adapter<SubtitleAdapter.ViewHolder>() {
         fun setAllItems(items: List<Subtitle>) { allItems = items }
         fun setItems(newItems: List<Subtitle>) { items = newItems; notifyDataSetChanged() }
-        fun visiblePositionOf(subtitle: Subtitle): Int =
-            items.indexOfFirst { it.index == subtitle.index && it.startTime == subtitle.startTime }
+        fun visiblePositionOf(subtitle: Subtitle): Int = items.indexOfFirst { it.index == subtitle.index && it.startTime == subtitle.startTime }
         override fun onCreateViewHolder(parent: android.view.ViewGroup, viewType: Int): ViewHolder = ViewHolder(
             android.view.LayoutInflater.from(parent.context).inflate(R.layout.item_subtitle, parent, false)
         )
