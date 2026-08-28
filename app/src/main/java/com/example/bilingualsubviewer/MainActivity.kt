@@ -6,7 +6,6 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.view.KeyEvent
-import android.view.MotionEvent
 import android.view.View
 import android.widget.Button
 import android.widget.EditText
@@ -54,6 +53,7 @@ class MainActivity : AppCompatActivity() {
     private var repeatTarget = 0
     private var playbackSpeed = 1.0f
     private var lastNonDefaultSpeed = 1.0f
+    private var subtitleOffsetMs = 0L
     private var loopGuard = false
 
     private val syncHandler = Handler(Looper.getMainLooper())
@@ -63,14 +63,10 @@ class MainActivity : AppCompatActivity() {
             syncHandler.postDelayed(this, 150)
         }
     }
+    private val hideStatusRunnable = Runnable { statusText.visibility = View.GONE }
 
-    private val openDocument = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
-        uri?.let { loadSubtitle(it) }
-    }
-
-    private val openMedia = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
-        uri?.let { loadMedia(it) }
-    }
+    private val openDocument = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? -> uri?.let { loadSubtitle(it) } }
+    private val openMedia = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? -> uri?.let { loadMedia(it) } }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -96,6 +92,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         syncHandler.removeCallbacksAndMessages(null)
+        statusText.removeCallbacks(hideStatusRunnable)
         player?.release()
         player = null
         super.onDestroy()
@@ -107,7 +104,6 @@ class MainActivity : AppCompatActivity() {
         val p = player ?: return super.dispatchKeyEvent(event)
         val ctrl = event.isCtrlPressed
         val shift = event.isShiftPressed
-        val alt = event.isAltPressed
         when (event.keyCode) {
             KeyEvent.KEYCODE_SPACE -> { p.playWhenReady = !p.playWhenReady; showStatus(if (p.playWhenReady) "▶ Playing" else "⏸ Paused"); return true }
             KeyEvent.KEYCODE_DPAD_LEFT -> { p.seekTo((p.currentPosition - if (ctrl) 30000 else if (shift) 60000 else 5000).coerceAtLeast(0)); return true }
@@ -120,13 +116,12 @@ class MainActivity : AppCompatActivity() {
             KeyEvent.KEYCODE_Z -> { toggleNormalLastSpeed(); return true }
             KeyEvent.KEYCODE_HOME -> { if (ctrl) selectSubtitle(currentPosition.coerceAtLeast(0)) else previousSubtitle(); return true }
             KeyEvent.KEYCODE_MOVE_END -> { nextSubtitle(); return true }
-            KeyEvent.KEYCODE_INSERT -> { toggleLoop(); return true }
-            KeyEvent.KEYCODE_BACKSLASH -> { toggleLoop(); return true }
-            KeyEvent.KEYCODE_COMMA -> { showStatus("Subtitle sync -0.5s"); return true }
-            KeyEvent.KEYCODE_PERIOD -> { showStatus("Subtitle sync +0.5s"); return true }
-            KeyEvent.KEYCODE_SLASH -> { showStatus("Subtitle sync reset"); return true }
-            KeyEvent.KEYCODE_LEFT_BRACKET -> { if (!loopGuard) setLoopStart(); return true }
-            KeyEvent.KEYCODE_RIGHT_BRACKET -> { if (!loopGuard) setLoopEnd(); return true }
+            KeyEvent.KEYCODE_INSERT, KeyEvent.KEYCODE_BACKSLASH -> { toggleLoop(); return true }
+            KeyEvent.KEYCODE_COMMA -> { changeSubtitleOffset(-500); return true }
+            KeyEvent.KEYCODE_PERIOD -> { changeSubtitleOffset(500); return true }
+            KeyEvent.KEYCODE_SLASH -> { subtitleOffsetMs = 0; syncSubtitleToPlayer(); showStatus("Subtitle sync reset"); return true }
+            KeyEvent.KEYCODE_LEFT_BRACKET -> { showStatus("A = current subtitle"); return true }
+            KeyEvent.KEYCODE_RIGHT_BRACKET -> { showStatus("B = current subtitle"); return true }
             KeyEvent.KEYCODE_ENTER -> { playerView.toggleControllerVisibility(); return true }
         }
         return super.dispatchKeyEvent(event)
@@ -154,10 +149,7 @@ class MainActivity : AppCompatActivity() {
 
         searchInput.addTextChangedListener(object : android.text.TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
-            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
-                searchQuery = s?.toString()?.trim() ?: ""
-                applySearch()
-            }
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) { searchQuery = s?.toString()?.trim() ?: ""; applySearch() }
             override fun afterTextChanged(s: android.text.Editable?) = Unit
         })
     }
@@ -172,9 +164,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setupButtons() {
-        findViewById<Button>(R.id.openButton).setOnClickListener {
-            openDocument.launch(arrayOf("application/x-subrip", "text/srt", "text/plain", "application/octet-stream", "*/*"))
-        }
+        findViewById<Button>(R.id.openButton).setOnClickListener { openDocument.launch(arrayOf("application/x-subrip", "text/srt", "text/plain", "application/octet-stream", "*/*")) }
         mediaButton.setOnClickListener { openMedia.launch(arrayOf("video/*", "audio/*", "application/octet-stream")) }
         videoToggleButton.setOnClickListener { toggleVideo() }
         speedButton.setOnClickListener { showSpeedMenu() }
@@ -188,9 +178,7 @@ class MainActivity : AppCompatActivity() {
             if (player == null) {
                 player = ExoPlayer.Builder(this).build().also { exo ->
                     playerView.player = exo
-                    exo.addListener(object : Player.Listener {
-                        override fun onPlaybackStateChanged(playbackState: Int) { syncSubtitleToPlayer() }
-                    })
+                    exo.addListener(object : Player.Listener { override fun onPlaybackStateChanged(playbackState: Int) { syncSubtitleToPlayer() } })
                 }
             }
             player?.setMediaItem(MediaItem.fromUri(uri))
@@ -201,16 +189,14 @@ class MainActivity : AppCompatActivity() {
             videoToggleButton.visibility = View.VISIBLE
             speedButton.visibility = View.VISIBLE
             loopButton.visibility = View.VISIBLE
-        } catch (exception: Exception) {
-            Toast.makeText(this, "Media error: ${exception.message}", Toast.LENGTH_LONG).show()
-        }
+        } catch (exception: Exception) { Toast.makeText(this, "Media error: ${exception.message}", Toast.LENGTH_LONG).show() }
     }
 
     private fun toggleVideo() {
         videoHidden = !videoHidden
         playerView.visibility = if (videoHidden) View.GONE else View.VISIBLE
         videoToggleButton.text = if (videoHidden) getString(R.string.show_video) else getString(R.string.hide_video)
-        showStatus(if (videoHidden) "🎧 Audio Only" else "🎬 Video shown")
+        showStatus(if (videoHidden) "🎧 Audio Only — video hidden" else "🎬 Video shown")
     }
 
     private fun loadSubtitle(uri: Uri) {
@@ -221,6 +207,7 @@ class MainActivity : AppCompatActivity() {
             if (parsed.isEmpty()) { Toast.makeText(this, getString(R.string.no_subtitles), Toast.LENGTH_LONG).show(); return }
             subtitles = parsed
             currentPosition = 0
+            subtitleOffsetMs = 0
             searchQuery = ""
             searchInput.setText("")
             if (player == null) fileNameText.text = uri.lastPathSegment ?: getString(R.string.subtitle_file)
@@ -260,7 +247,7 @@ class MainActivity : AppCompatActivity() {
         if (position !in subtitles.indices) return
         currentPosition = position
         val subtitle = subtitles[position]
-        player?.seekTo(subtitle.startTime)
+        player?.seekTo((subtitle.startTime - subtitleOffsetMs).coerceAtLeast(0))
         player?.playWhenReady = true
         scrollToSubtitle(subtitle)
         updateUi()
@@ -268,18 +255,16 @@ class MainActivity : AppCompatActivity() {
 
     private fun syncSubtitleToPlayer() {
         val p = player ?: return
-        if (subtitles.isEmpty() || p.currentPosition < 0) return
-        val time = p.currentPosition
+        if (subtitles.isEmpty()) return
+        val time = p.currentPosition + subtitleOffsetMs
         val index = subtitles.indexOfLast { it.startTime <= time }
-        if (index >= 0 && index < subtitles.size && time < subtitles[index].endTime) {
+        if (index >= 0 && time < subtitles[index].endTime) {
             if (index != currentPosition) {
                 currentPosition = index
                 updateUi()
                 scrollToSubtitle(subtitles[index])
             }
-        }
-        if (loopSubtitle && currentPosition in subtitles.indices && time >= subtitles[currentPosition].endTime - 30) {
-            if (!loopGuard) {
+            if (loopSubtitle && time >= subtitles[index].endTime - 80 && !loopGuard) {
                 loopGuard = true
                 repeatCount++
                 if (repeatTarget > 0 && repeatCount >= repeatTarget) {
@@ -288,7 +273,7 @@ class MainActivity : AppCompatActivity() {
                     updateLoopButton()
                     showStatus("▶ Loop finished")
                 } else {
-                    p.seekTo(subtitles[currentPosition].startTime)
+                    p.seekTo((subtitles[index].startTime - subtitleOffsetMs).coerceAtLeast(0))
                     p.playWhenReady = true
                 }
                 syncHandler.postDelayed({ loopGuard = false }, 250)
@@ -315,15 +300,9 @@ class MainActivity : AppCompatActivity() {
 
     private fun updateLoopButton() { loopButton.text = if (loopSubtitle) getString(R.string.loop_on) else getString(R.string.loop_off) }
 
-    private fun setLoopStart() { if (currentPosition in subtitles.indices) { showStatus("🔁 A = line ${subtitles[currentPosition].index}"); toggleLoopIfNeeded() } }
-    private fun setLoopEnd() { if (currentPosition in subtitles.indices) { showStatus("🔁 B = line ${subtitles[currentPosition].index}"); toggleLoopIfNeeded() } }
-    private fun toggleLoopIfNeeded() { if (!loopSubtitle) { loopSubtitle = true; updateLoopButton() } }
-
     private fun showSpeedMenu() {
         val popup = android.widget.PopupMenu(this, speedButton)
-        listOf(0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 1.75f, 2.0f).forEach { speed ->
-            popup.menu.add(String.format(Locale.US, "%.2fx", speed)).setOnMenuItemClickListener { setSpeed(speed); true }
-        }
+        listOf(0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 1.75f, 2.0f).forEach { speed -> popup.menu.add(String.format(Locale.US, "%.2fx", speed)).setOnMenuItemClickListener { setSpeed(speed); true } }
         popup.show()
     }
 
@@ -336,11 +315,19 @@ class MainActivity : AppCompatActivity() {
         showStatus(String.format(Locale.US, "▶ Speed %.1fx", speed))
     }
     private fun toggleNormalLastSpeed() { if (playbackSpeed == 1.0f) setSpeed(lastNonDefaultSpeed) else setSpeed(1.0f) }
+
+    private fun changeSubtitleOffset(delta: Long) {
+        subtitleOffsetMs += delta
+        syncSubtitleToPlayer()
+        val sign = if (subtitleOffsetMs >= 0) "+" else ""
+        showStatus("Subtitle sync $sign${subtitleOffsetMs / 1000.0}s")
+    }
+
     private fun showStatus(message: String) {
+        statusText.removeCallbacks(hideStatusRunnable)
         statusText.text = message
         statusText.visibility = View.VISIBLE
-        statusText.removeCallbacks(null)
-        statusText.postDelayed({ statusText.visibility = View.GONE }, 1400)
+        statusText.postDelayed(hideStatusRunnable, 1400)
     }
 
     private fun updateUi() {
