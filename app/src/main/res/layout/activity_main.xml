@@ -20,9 +20,9 @@
         <TextView android:id="@+id/fileNameText" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:maxLines="1" android:ellipsize="middle" android:paddingStart="4dp" android:paddingEnd="4dp" android:text="@string/no_file" android:textSize="11sp" android:textColor="@color/text_secondary" />
     </LinearLayout>
 
-    <androidx.media3.ui.PlayerView android:id="@+id/playerView" android:layout_width="match_parent" android:layout_height="145dp" android:layout_marginStart="2dp" android:layout_marginEnd="2dp" android:background="#000000" android:visibility="visible" app:show_timeout="0" />
+    <androidx.media3.ui.PlayerView android:id="@+id/playerView" android:layout_width="match_parent" android:layout_height="145dp" android:layout_marginStart="2dp" android:layout_marginEnd="2dp" android:background="#000000" android:visibility="visible" app:use_controller="false" />
 
-    <androidx.media3.ui.PlayerControlView android:id="@+id/playerControls" android:layout_width="match_parent" android:layout_height="48dp" android:layout_marginStart="2dp" android:layout_marginEnd="2dp" android:visibility="gone" app:show_timeout="0" app:show_rewind_button="true" app:show_next_button="false" app:show_previous_button="false" />
+    <androidx.media3.ui.PlayerControlView android:id="@+id/playerControls" android:layout_width="match_parent" android:layout_height="36dp" android:layout_marginStart="2dp" android:layout_marginEnd="2dp" android:visibility="gone" app:show_timeout="0" app:show_rewind_button="true" app:show_fast_forward_button="true" app:show_next_button="false" app:show_previous_button="false" app:bar_height="1dp" app:touch_target_height="24dp" app:time_bar_scrubbing_enabled="true" app:time_bar_min_update_interval="50" />
 
     <EditText android:id="@+id/searchInput" android:layout_width="match_parent" android:layout_height="42dp" android:minHeight="0dp" android:layout_marginStart="6dp" android:layout_marginEnd="6dp" android:layout_marginBottom="2dp" android:hint="@string/search_hint" android:inputType="text" android:singleLine="true" android:imeOptions="actionSearch" android:paddingStart="10dp" android:paddingEnd="10dp" android:importantForAutofill="no" />
 
