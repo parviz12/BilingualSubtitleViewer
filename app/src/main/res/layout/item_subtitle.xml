@@ -31,7 +31,6 @@
         android:lineSpacingExtra="3dp"
         android:textColor="@color/text_primary"
         android:singleLine="false"
-        android:maxLines="20"
         android:ellipsize="none"
         android:breakStrategy="high_quality"
         android:hyphenationFrequency="none"
