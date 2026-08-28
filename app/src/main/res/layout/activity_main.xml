@@ -6,7 +6,8 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:background="@color/background">
+    android:background="@color/background"
+    android:clipToPadding="false">
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -15,8 +16,8 @@
         android:gravity="center_vertical"
         android:paddingStart="12dp"
         android:paddingEnd="12dp"
-        android:paddingTop="8dp"
-        android:paddingBottom="8dp">
+        android:paddingTop="6dp"
+        android:paddingBottom="6dp">
 
         <TextView
             android:layout_width="0dp"
@@ -44,51 +45,63 @@
         android:paddingStart="12dp"
         android:paddingEnd="12dp"
         android:paddingBottom="6dp"
+        android:maxLines="1"
+        android:ellipsize="middle"
         android:text="@string/no_file"
         android:textSize="13sp"
         android:textColor="@color/text_secondary" />
 
-    <TextView
-        android:id="@+id/emptyText"
+    <FrameLayout
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"
-        android:gravity="center"
-        android:text="@string/open_subtitle_message"
-        android:textSize="16sp"
-        android:textColor="@color/text_secondary"
-        android:padding="24dp" />
+        android:clipToPadding="false">
 
-    <androidx.recyclerview.widget.RecyclerView
-        android:id="@+id/subtitleList"
-        android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1"
-        android:clipToPadding="false"
-        android:paddingTop="4dp"
-        android:paddingBottom="4dp"
-        android:overScrollMode="ifContentScrolls" />
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/subtitleList"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:clipToPadding="false"
+            android:paddingTop="4dp"
+            android:paddingBottom="4dp"
+            android:overScrollMode="ifContentScrolls" />
+
+        <TextView
+            android:id="@+id/emptyText"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:gravity="center"
+            android:text="@string/open_subtitle_message"
+            android:textSize="16sp"
+            android:textColor="@color/text_secondary"
+            android:padding="24dp" />
+
+    </FrameLayout>
 
     <LinearLayout
+        android:id="@+id/navigationPanel"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:padding="8dp"
+        android:paddingStart="8dp"
+        android:paddingEnd="8dp"
+        android:paddingTop="6dp"
+        android:paddingBottom="6dp"
         android:background="@color/panel">
 
         <TextView
             android:id="@+id/currentSubtitleText"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:minHeight="64dp"
+            android:minHeight="56dp"
             android:gravity="center"
             android:textSize="18sp"
             android:lineSpacingExtra="3dp"
             android:textColor="@color/text_primary"
             android:paddingStart="12dp"
             android:paddingEnd="12dp"
-            android:paddingTop="8dp"
-            android:paddingBottom="8dp"
+            android:paddingTop="6dp"
+            android:paddingBottom="6dp"
             android:textIsSelectable="true" />
 
         <TextView
@@ -99,8 +112,8 @@
             android:text="0 / 0"
             android:textSize="13sp"
             android:textColor="@color/text_secondary"
-            android:paddingTop="2dp"
-            android:paddingBottom="4dp" />
+            android:paddingTop="1dp"
+            android:paddingBottom="3dp" />
 
         <LinearLayout
             android:layout_width="match_parent"
