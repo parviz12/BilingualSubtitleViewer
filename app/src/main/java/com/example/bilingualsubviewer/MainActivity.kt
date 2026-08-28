@@ -61,6 +61,7 @@ class MainActivity : AppCompatActivity() {
     private var subtitleOffsetMs = 0L
     private var loopGuard = false
     private var userSeeking = false
+    private var playSingleSubtitle = false
 
     private val handler = Handler(Looper.getMainLooper())
     private val hideStatus = Runnable { statusText.visibility = View.GONE }
@@ -101,7 +102,7 @@ class MainActivity : AppCompatActivity() {
             KeyEvent.KEYCODE_X->{changeSpeed(-.1f);return true}
             KeyEvent.KEYCODE_C->{changeSpeed(.1f);return true}
             KeyEvent.KEYCODE_Z->{toggleNormalLastSpeed();return true}
-            KeyEvent.KEYCODE_HOME->{if(ctrl)selectSubtitle(currentPosition.coerceAtLeast(0))else previousSubtitle();return true}
+            KeyEvent.KEYCODE_HOME->{if(ctrl)selectSubtitle(currentPosition.coerceAtLeast(0),false)else previousSubtitle();return true}
             KeyEvent.KEYCODE_MOVE_END->{nextSubtitle();return true}
             KeyEvent.KEYCODE_INSERT,KeyEvent.KEYCODE_BACKSLASH->{toggleLoop();return true}
         }
@@ -113,9 +114,9 @@ class MainActivity : AppCompatActivity() {
         previousButton=findViewById(R.id.previousButton); nextButton=findViewById(R.id.nextButton); navigationPlayPauseButton=findViewById(R.id.navigationPlayPauseButton); emptyText=findViewById(R.id.emptyText); searchInput=findViewById(R.id.searchInput)
         playerView=findViewById(R.id.playerView); mediaButton=findViewById(R.id.mediaButton); videoToggleButton=findViewById(R.id.videoToggleButton); speedButton=findViewById(R.id.speedButton); loopButton=findViewById(R.id.loopButton); statusText=findViewById(R.id.statusText)
         playerControls=findViewById(R.id.playerControls); playPauseButton=findViewById(R.id.playPauseButton); currentTimeText=findViewById(R.id.currentTimeText); durationTimeText=findViewById(R.id.durationTimeText); timelineSeekBar=findViewById(R.id.timelineSeekBar)
-        subtitleList.layoutManager=LinearLayoutManager(this); subtitleAdapter=SubtitleAdapter(emptyList(),emptyList()){selectSubtitle(it)}; subtitleList.adapter=subtitleAdapter
+        subtitleList.layoutManager=LinearLayoutManager(this); subtitleAdapter=SubtitleAdapter(emptyList(),emptyList()){selectSubtitle(it,true)}; subtitleList.adapter=subtitleAdapter
         searchInput.addTextChangedListener(object:android.text.TextWatcher{override fun beforeTextChanged(s:CharSequence?,st:Int,c:Int,a:Int)=Unit;override fun onTextChanged(s:CharSequence?,st:Int,b:Int,c:Int){searchQuery=s?.toString()?.trim() ?: "";applySearch()};override fun afterTextChanged(s:android.text.Editable?)=Unit})
-        timelineSeekBar.setOnSeekBarChangeListener(object:SeekBar.OnSeekBarChangeListener{override fun onStartTrackingTouch(s:SeekBar){userSeeking=true};override fun onStopTrackingTouch(s:SeekBar){player?.seekTo(s.progress.toLong());userSeeking=false};override fun onProgressChanged(s:SeekBar,p:Int,fromUser:Boolean){if(fromUser)currentTimeText.text=formatDuration(p.toLong())}})
+        timelineSeekBar.setOnSeekBarChangeListener(object:SeekBar.OnSeekBarChangeListener{override fun onStartTrackingTouch(s:SeekBar){userSeeking=true};override fun onStopTrackingTouch(s:SeekBar){player?.seekTo(s.progress.toLong());playSingleSubtitle=false;userSeeking=false};override fun onProgressChanged(s:SeekBar,p:Int,fromUser:Boolean){if(fromUser)currentTimeText.text=formatDuration(p.toLong())}})
     }
 
     private fun setupInsets(){val root=findViewById<View>(R.id.rootContainer);ViewCompat.setOnApplyWindowInsetsListener(root){v,i->val b=i.getInsets(WindowInsetsCompat.Type.systemBars());v.updatePadding(left=b.left,top=b.top,right=b.right,bottom=b.bottom);i}}
@@ -124,10 +125,11 @@ class MainActivity : AppCompatActivity() {
         mediaButton.setOnClickListener{openMedia.launch(arrayOf("video/*","audio/*","application/octet-stream"))};videoToggleButton.setOnClickListener{toggleVideo()};speedButton.setOnClickListener{showSpeedMenu()};loopButton.setOnClickListener{toggleLoop()};previousButton.setOnClickListener{previousSubtitle()};nextButton.setOnClickListener{nextSubtitle()};playPauseButton.setOnClickListener{togglePlayback()};navigationPlayPauseButton.setOnClickListener{togglePlayback()}
     }
 
-    private fun togglePlayback(){player?.let{it.playWhenReady=!it.playWhenReady;updatePlaybackControls()}}
+    private fun togglePlayback(){player?.let{playSingleSubtitle=false;it.playWhenReady=!it.playWhenReady;updatePlaybackControls()}}
 
     private fun loadMedia(uri:Uri){try{
-        if(player==null){player=ExoPlayer.Builder(this).build().also{exo->playerView.player=exo;exo.addListener(object:Player.Listener{override fun onPlaybackStateChanged(s:Int){updatePlaybackControls()}})}}
+        if(player==null){player=ExoPlayer.Builder(this).build().also{exo->playerView.player=exo;exo.addListener(object:Player.Listener{override fun onPlaybackStateChanged(s:Int){if(s==Player.STATE_ENDED)playSingleSubtitle=false;updatePlaybackControls()}})}}
+        playSingleSubtitle=false
         player?.setMediaItem(MediaItem.fromUri(uri));player?.setPlaybackSpeed(playbackSpeed);player?.prepare();player?.playWhenReady=true
         fileNameText.text=uri.lastPathSegment?:getString(R.string.media_file)
         videoHidden=false
@@ -149,14 +151,14 @@ class MainActivity : AppCompatActivity() {
         showStatus(if(videoHidden)"🎧 Audio Only — video hidden" else "🎬 Video shown")
     }
 
-    private fun loadSubtitle(uri:Uri){try{val text=contentResolver.openInputStream(uri)?.use{BufferedReader(InputStreamReader(it,Charsets.UTF_8)).readText()};if(text.isNullOrBlank()){Toast.makeText(this,getString(R.string.empty_file),Toast.LENGTH_SHORT).show();return};val parsed=SubtitleParser.parse(text);if(parsed.isEmpty()){Toast.makeText(this,getString(R.string.no_subtitles),Toast.LENGTH_LONG).show();return};subtitles=parsed;currentPosition=0;repeatCount=0;subtitleOffsetMs=0;searchQuery="";searchInput.setText("");if(player==null)fileNameText.text=uri.lastPathSegment?:getString(R.string.subtitle_file);subtitleAdapter.setAllItems(subtitles);applySearch();syncSubtitleToPlayer()}catch(e:Exception){Toast.makeText(this,"Error: ${e.message}",Toast.LENGTH_LONG).show()}}
+    private fun loadSubtitle(uri:Uri){try{val text=contentResolver.openInputStream(uri)?.use{BufferedReader(InputStreamReader(it,Charsets.UTF_8)).readText()};if(text.isNullOrBlank()){Toast.makeText(this,getString(R.string.empty_file),Toast.LENGTH_SHORT).show();return};val parsed=SubtitleParser.parse(text);if(parsed.isEmpty()){Toast.makeText(this,getString(R.string.no_subtitles),Toast.LENGTH_LONG).show();return};subtitles=parsed;currentPosition=0;repeatCount=0;playSingleSubtitle=false;subtitleOffsetMs=0;searchQuery="";searchInput.setText("");if(player==null)fileNameText.text=uri.lastPathSegment?:getString(R.string.subtitle_file);subtitleAdapter.setAllItems(subtitles);applySearch();syncSubtitleToPlayer()}catch(e:Exception){Toast.makeText(this,"Error: ${e.message}",Toast.LENGTH_LONG).show()}}
     private fun applySearch(){val f=filteredSubtitles();subtitleAdapter.setItems(f);if(searchQuery.isNotBlank()&&f.isEmpty()){emptyText.text=getString(R.string.no_search_results);emptyText.visibility=View.VISIBLE;return};emptyText.text=getString(R.string.open_subtitle_message);updateUi();if(searchQuery.isNotBlank()&&f.isNotEmpty())selectFirstSearchResult(f)}
     private fun filteredSubtitles():List<Subtitle>{if(searchQuery.isBlank())return subtitles;val q=searchQuery.lowercase(Locale.getDefault());return subtitles.filter{s->s.index.toString().contains(searchQuery)||s.text.lowercase(Locale.getDefault()).contains(q)}}
-    private fun selectFirstSearchResult(r:List<Subtitle>){val f=r.firstOrNull()?:return;val i=subtitles.indexOfFirst{s->s.index==f.index&&s.startTime==f.startTime};if(i>=0)selectSubtitle(i)}
-    private fun selectSubtitle(i:Int){if(i !in subtitles.indices)return;currentPosition=i;repeatCount=0;val s=subtitles[i];player?.seekTo((s.startTime-subtitleOffsetMs).coerceAtLeast(0));player?.playWhenReady=true;scrollToSubtitle(s);updateUi();updatePlaybackControls()}
-    private fun syncSubtitleToPlayer(){val p=player?:return;if(subtitles.isEmpty())return;val time=p.currentPosition+subtitleOffsetMs;val i=subtitles.indexOfLast{it.startTime<=time};if(i>=0&&time<subtitles[i].endTime){if(i!=currentPosition){currentPosition=i;updateUi();scrollToSubtitle(subtitles[i])};if(loopSubtitle&&time>=subtitles[i].endTime-250&&!loopGuard){loopGuard=true;repeatCount++;if(repeatCount>=repeatTarget){repeatCount=0;showStatus("🔁 Loop: 5/5 — continuing")};p.seekTo((subtitles[i].startTime-subtitleOffsetMs).coerceAtLeast(0));p.playWhenReady=true;handler.postDelayed({loopGuard=false},350)}}}
+    private fun selectFirstSearchResult(r:List<Subtitle>){val f=r.firstOrNull()?:return;val i=subtitles.indexOfFirst{s->s.index==f.index&&s.startTime==f.startTime};if(i>=0)selectSubtitle(i,false)}
+    private fun selectSubtitle(i:Int, singlePlay:Boolean=false){if(i !in subtitles.indices)return;currentPosition=i;repeatCount=0;playSingleSubtitle=singlePlay;val s=subtitles[i];player?.seekTo((s.startTime-subtitleOffsetMs).coerceAtLeast(0));player?.playWhenReady=true;scrollToSubtitle(s);updateUi();updatePlaybackControls()}
+    private fun syncSubtitleToPlayer(){val p=player?:return;if(subtitles.isEmpty())return;val time=p.currentPosition+subtitleOffsetMs;val i=subtitles.indexOfLast{it.startTime<=time};if(i>=0&&time<subtitles[i].endTime){if(i!=currentPosition){currentPosition=i;updateUi();scrollToSubtitle(subtitles[i])};if(loopSubtitle&&time>=subtitles[i].endTime-250&&!loopGuard){loopGuard=true;repeatCount++;if(repeatCount>=repeatTarget){repeatCount=0;showStatus("🔁 Loop: 5/5 — continuing")};p.seekTo((subtitles[i].startTime-subtitleOffsetMs).coerceAtLeast(0));p.playWhenReady=true;handler.postDelayed({loopGuard=false},350)}}else if(playSingleSubtitle&&i==currentPosition&&time>=subtitles[i].endTime){p.pause();playSingleSubtitle=false;showStatus("⏹ Conversation finished")}}
     private fun scrollToSubtitle(s:Subtitle){val p=subtitleAdapter.visiblePositionOf(s);if(p>=0)subtitleList.smoothScrollToPosition(p)}
-    private fun nextSubtitle(){if(subtitles.isNotEmpty()&&currentPosition<subtitles.lastIndex)selectSubtitle(currentPosition+1)};private fun previousSubtitle(){if(subtitles.isNotEmpty()&&currentPosition>0)selectSubtitle(currentPosition-1)}
+    private fun nextSubtitle(){if(subtitles.isNotEmpty()&&currentPosition<subtitles.lastIndex)selectSubtitle(currentPosition+1,false)};private fun previousSubtitle(){if(subtitles.isNotEmpty()&&currentPosition>0)selectSubtitle(currentPosition-1,false)}
     private fun toggleLoop(){if(subtitles.isEmpty()||currentPosition !in subtitles.indices)return;loopSubtitle=!loopSubtitle;repeatCount=0;repeatTarget=5;updateLoopButton();showStatus(if(loopSubtitle)"🔁 Loop ON — groups of 5"else"⏹ Loop OFF")};private fun updateLoopButton(){loopButton.text=if(loopSubtitle)getString(R.string.loop_on)else getString(R.string.loop_off)}
     private fun showSpeedMenu(){val p=android.widget.PopupMenu(this,speedButton);listOf(.5f,.75f,1f,1.25f,1.5f,1.75f,2f).forEach{s->p.menu.add(String.format(Locale.US,"%.2fx",s)).setOnMenuItemClickListener{setSpeed(s);true}};p.show()};private fun changeSpeed(d:Float){setSpeed((playbackSpeed+d).coerceIn(.25f,3f))};private fun setSpeed(s:Float){if(s!=1f)lastNonDefaultSpeed=s;playbackSpeed=s;player?.setPlaybackSpeed(s);speedButton.text=String.format(Locale.US,"%.1fx",s);showStatus("▶ Speed %.1fx".format(Locale.US,s))};private fun toggleNormalLastSpeed(){setSpeed(if(playbackSpeed==1f)lastNonDefaultSpeed else 1f)}
     private fun changeSubtitleOffset(d:Long){subtitleOffsetMs+=d;syncSubtitleToPlayer();showStatus("Subtitle sync ${if(subtitleOffsetMs>=0)"+"else""}${subtitleOffsetMs/1000.0}s")};private fun showStatus(m:String){statusText.removeCallbacks(hideStatus);statusText.text=m;statusText.visibility=View.VISIBLE;statusText.postDelayed(hideStatus,1400)}
