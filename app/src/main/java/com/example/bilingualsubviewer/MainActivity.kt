@@ -124,7 +124,7 @@ class MainActivity : AppCompatActivity() {
             KeyEvent.KEYCODE_SLASH -> { subtitleOffsetMs = 0; syncSubtitleToPlayer(); showStatus("Subtitle sync reset"); return true }
             KeyEvent.KEYCODE_LEFT_BRACKET -> { showStatus("A = current subtitle"); return true }
             KeyEvent.KEYCODE_RIGHT_BRACKET -> { showStatus("B = current subtitle"); return true }
-            KeyEvent.KEYCODE_ENTER -> { if (playerView.isControllerVisible) playerView.hideController() else playerView.showController(); return true }
+            KeyEvent.KEYCODE_ENTER -> { playerView.performClick(); return true }
         }
         return super.dispatchKeyEvent(event)
     }
