@@ -2,6 +2,7 @@ package com.example.bilingualsubviewer
 
 import android.app.ComponentCaller
 import android.content.Intent
+import android.content.res.Configuration
 import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
@@ -80,9 +81,43 @@ class MainActivity : AppCompatActivity() {
         updateUi(); handler.post(syncRunnable)
     }
 
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        setContentView(R.layout.activity_main)
+        setupViews()
+        setupInsets()
+        setupButtons()
+
+        subtitleAdapter.setAllItems(subtitles)
+        subtitleAdapter.setItems(filteredSubtitles())
+        if (searchQuery.isNotBlank()) searchInput.setText(searchQuery)
+        updateUi()
+
+        player?.let { exo ->
+            playerView.player = exo
+            playerView.visibility = if (videoHidden) View.GONE else View.VISIBLE
+            playerView.alpha = 1f
+            playerControls.visibility = View.VISIBLE
+            videoToggleButton.visibility = View.VISIBLE
+            speedButton.visibility = View.VISIBLE
+            loopButton.visibility = View.VISIBLE
+            videoToggleButton.text = if (videoHidden) getString(R.string.show_video) else getString(R.string.hide_video)
+            speedButton.text = String.format(Locale.US, "%.1fx", playbackSpeed)
+            updateLoopButton()
+            updatePlaybackControls()
+        }
+        scrollToSubtitleIfPossible()
+    }
+
+    private fun scrollToSubtitleIfPossible() {
+        if (currentPosition in subtitles.indices) {
+            subtitleList.post { scrollToSubtitle(subtitles[currentPosition]) }
+        }
+    }
+
     @Suppress("DEPRECATION")
     override fun onNewIntent(intent: Intent, caller: ComponentCaller) {
-        super.onNewIntent(intent, caller); setIntent(intent)
+        super.onNewIntent(intent); setIntent(intent)
         if (intent.action == Intent.ACTION_VIEW) intent.data?.let(::loadSubtitle)
     }
 
