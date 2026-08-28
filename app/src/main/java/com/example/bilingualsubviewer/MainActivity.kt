@@ -54,10 +54,9 @@ class MainActivity : AppCompatActivity() {
     private var subtitles: List<Subtitle> = emptyList()
     private var currentPosition = -1
     private var explicitlySelectedPosition = -1
-    // Stable anchor for the subtitle explicitly selected from a filtered/search result.
-    // It is deliberately separate from currentPosition, which is allowed to move during playback.
     private var searchSelectedPosition = -1
     private var searchQuery = ""
+    private var mediaFileName = ""
     private var videoHidden = false
     private var loopSubtitle = false
     private var repeatCount = 0
@@ -69,6 +68,12 @@ class MainActivity : AppCompatActivity() {
     private var userSeeking = false
     private var playSingleSubtitle = false
     private var restoringSearch = false
+
+    // Saved RecyclerView position used only while rebuilding the UI after rotation.
+    // Using an exact position+offset prevents the list from jumping to the selected
+    // subtitle and eliminates the visible scroll animation during orientation changes.
+    private var restoreListPosition = RecyclerView.NO_POSITION
+    private var restoreListOffset = 0
 
     private val handler = Handler(Looper.getMainLooper())
     private val hideStatus = Runnable { statusText.visibility = View.GONE }
@@ -95,11 +100,21 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {
+        // Capture the exact visual scroll position BEFORE replacing the layout.
+        // This is intentionally independent of currentPosition so rotation cannot
+        // jump the list to the currently playing subtitle.
+        (subtitleList.layoutManager as? LinearLayoutManager)?.let { lm ->
+            restoreListPosition = lm.findFirstVisibleItemPosition()
+            val first = lm.findViewByPosition(restoreListPosition)
+            restoreListOffset = if (first != null) lm.getDecoratedTop(first) - subtitleList.paddingTop else 0
+        }
+
         super.onConfigurationChanged(newConfig)
         setContentView(R.layout.activity_main)
         setupViews()
         setupInsets()
         setupButtons()
+
         subtitleAdapter.setAllItems(subtitles)
         subtitleAdapter.setItems(filteredSubtitles())
         if (searchQuery.isNotBlank()) {
@@ -107,6 +122,10 @@ class MainActivity : AppCompatActivity() {
             searchInput.setText(searchQuery)
             restoringSearch = false
         }
+
+        // Restore the persistent media filename because setContentView creates a new TextView.
+        if (mediaFileName.isNotBlank()) fileNameText.text = mediaFileName
+
         updateUi()
         player?.let { exo ->
             playerView.player = exo
@@ -121,7 +140,17 @@ class MainActivity : AppCompatActivity() {
             updateLoopButton()
             updatePlaybackControls()
         }
-        scrollToSubtitleIfPossible()
+
+        // Restore the exact previous viewport immediately. Do NOT use smoothScrollToPosition.
+        if (restoreListPosition != RecyclerView.NO_POSITION) {
+            val position = restoreListPosition
+            val offset = restoreListOffset
+            subtitleList.post {
+                (subtitleList.layoutManager as? LinearLayoutManager)?.scrollToPositionWithOffset(position, offset)
+                restoreListPosition = RecyclerView.NO_POSITION
+                restoreListOffset = 0
+            }
+        }
     }
 
     private fun scrollToSubtitleIfPossible() {
@@ -269,7 +298,8 @@ class MainActivity : AppCompatActivity() {
             player?.setPlaybackSpeed(playbackSpeed)
             player?.prepare()
             player?.playWhenReady = true
-            fileNameText.text = uri.lastPathSegment ?: getString(R.string.media_file)
+            mediaFileName = uri.lastPathSegment ?: getString(R.string.media_file)
+            fileNameText.text = mediaFileName
             videoHidden = false
             playerView.visibility = View.VISIBLE
             playerView.alpha = 1f
@@ -286,7 +316,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showFullFileName() {
-        val name = fileNameText.text?.toString().orEmpty()
+        val name = mediaFileName.ifBlank { fileNameText.text?.toString().orEmpty() }
         if (name.isNotBlank()) AlertDialog.Builder(this).setTitle(getString(R.string.media_file)).setMessage(name).setPositiveButton(android.R.string.ok, null).show()
     }
 
@@ -316,7 +346,10 @@ class MainActivity : AppCompatActivity() {
             restoringSearch = true
             searchInput.setText("")
             restoringSearch = false
-            if (player == null) fileNameText.text = uri.lastPathSegment ?: getString(R.string.subtitle_file)
+            if (player == null) {
+                mediaFileName = uri.lastPathSegment ?: getString(R.string.subtitle_file)
+                fileNameText.text = mediaFileName
+            }
             subtitleAdapter.setAllItems(subtitles)
             applySearch()
             syncSubtitleToPlayer()
@@ -338,9 +371,6 @@ class MainActivity : AppCompatActivity() {
 
         emptyText.text = getString(R.string.open_subtitle_message)
 
-        // If a search result was explicitly selected, keep that exact subtitle as the
-        // anchor while the query is edited or cleared. Playback synchronization may
-        // change currentPosition, but must never overwrite this search anchor.
         val anchor = if (wasSearching && searchSelectedPosition in subtitles.indices) {
             searchSelectedPosition
         } else if (!wasSearching && searchSelectedPosition in subtitles.indices) {
@@ -357,17 +387,6 @@ class MainActivity : AppCompatActivity() {
         updateUi()
 
         if (!wasSearching && searchSelectedPosition in subtitles.indices) {
-            val anchorPosition = searchSelectedPosition
-            subtitleList.post {
-                val visible = subtitleAdapter.visiblePositionOf(subtitles[anchorPosition])
-                if (visible >= 0) {
-                    subtitleList.layoutManager?.scrollToPosition(visible)
-                }
-            }
-            // The selection has now been restored into the normal full list.
-            // Keep explicitlySelectedPosition as the stable last explicit selection,
-            // but clear the search-only anchor so later normal typing/playback does not
-            // unexpectedly jump back to it.
             searchSelectedPosition = -1
         }
     }
