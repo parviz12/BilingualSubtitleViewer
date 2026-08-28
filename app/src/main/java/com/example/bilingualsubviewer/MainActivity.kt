@@ -69,8 +69,6 @@ class MainActivity : AppCompatActivity() {
     private var playSingleSubtitle = false
     private var restoringSearch = false
 
-    // Orientation restoration is deliberately independent from the currently playing subtitle.
-    // This prevents RecyclerView from jumping to item 0 and then animating to the active row.
     private var restoringOrientation = false
     private var savedFirstSubtitleIndex = -1
     private var savedFirstSubtitleStart = -1L
@@ -104,23 +102,17 @@ class MainActivity : AppCompatActivity() {
         saveOrientationState()
         restoringOrientation = true
         super.onConfigurationChanged(newConfig)
-
         setContentView(R.layout.activity_main)
         setupViews(); setupInsets(); setupButtons()
-
-        // Keep the new RecyclerView invisible while it is initially laid out at position 0.
-        // The exact old viewport is applied before the user can see the new layout.
         subtitleList.visibility = View.INVISIBLE
         subtitleAdapter.setAllItems(subtitles)
         subtitleAdapter.setItems(filteredSubtitles())
-
         if (searchQuery.isNotBlank()) {
             restoringSearch = true
             searchInput.setText(searchQuery)
             restoringSearch = false
         }
         if (mediaFileName.isNotBlank()) fileNameText.text = mediaFileName
-
         updateUi()
         player?.let { exo ->
             playerView.player = exo
@@ -135,9 +127,6 @@ class MainActivity : AppCompatActivity() {
             updateLoopButton()
             updatePlaybackControls()
         }
-
-        // post is required because the replacement RecyclerView needs one layout pass first.
-        // It is invisible during that pass, so no jump/scroll animation is visible.
         subtitleList.post { restoreOrientationState() }
     }
 
@@ -146,11 +135,9 @@ class MainActivity : AppCompatActivity() {
         val lm = subtitleList.layoutManager as? LinearLayoutManager ?: return
         val first = lm.findFirstVisibleItemPosition()
         if (first == RecyclerView.NO_POSITION) return
-
         savedFirstAdapterPosition = first
         val firstView = lm.findViewByPosition(first)
         savedFirstOffset = if (firstView != null) lm.getDecoratedTop(firstView) - subtitleList.paddingTop else 0
-
         val firstSubtitle = subtitleAdapter.itemAt(first)
         if (firstSubtitle != null) {
             savedFirstSubtitleIndex = firstSubtitle.index
@@ -164,9 +151,6 @@ class MainActivity : AppCompatActivity() {
             finishOrientationRestore()
             return
         }
-
-        // Stable subtitle identity is safer than an adapter position when search/filter state
-        // has just been rebuilt. Position is only the fallback.
         var target = RecyclerView.NO_POSITION
         if (savedFirstSubtitleIndex >= 0 && savedFirstSubtitleStart >= 0) {
             target = subtitleAdapter.visiblePositionOfIdentity(savedFirstSubtitleIndex, savedFirstSubtitleStart)
@@ -174,17 +158,12 @@ class MainActivity : AppCompatActivity() {
         if (target == RecyclerView.NO_POSITION && savedFirstAdapterPosition >= 0 && savedFirstAdapterPosition < subtitleAdapter.itemCount) {
             target = savedFirstAdapterPosition
         }
-
         if (target != RecyclerView.NO_POSITION) lm.scrollToPositionWithOffset(target, savedFirstOffset)
-
-        // Re-apply selection without scrolling to it. The selected subtitle can be far outside
-        // the viewport and must not disturb the viewport restored above.
         if (savedSelectedPosition in subtitles.indices) {
             currentPosition = savedSelectedPosition
             explicitlySelectedPosition = savedSelectedPosition
             subtitleAdapter.setCurrentIndex(subtitles[savedSelectedPosition].index)
         }
-
         subtitleList.visibility = View.VISIBLE
         subtitleList.requestLayout()
         finishOrientationRestore()
@@ -244,11 +223,9 @@ class MainActivity : AppCompatActivity() {
         previousButton=findViewById(R.id.previousButton); nextButton=findViewById(R.id.nextButton); navigationPlayPauseButton=findViewById(R.id.navigationPlayPauseButton); emptyText=findViewById(R.id.emptyText); searchInput=findViewById(R.id.searchInput)
         playerView=findViewById(R.id.playerView); mediaButton=findViewById(R.id.mediaButton); videoToggleButton=findViewById(R.id.videoToggleButton); speedButton=findViewById(R.id.speedButton); loopButton=findViewById(R.id.loopButton); statusText=findViewById(R.id.statusText)
         playerControls=findViewById(R.id.playerControls); playPauseButton=findViewById(R.id.playPauseButton); currentTimeText=findViewById(R.id.currentTimeText); durationTimeText=findViewById(R.id.durationTimeText); timelineSeekBar=findViewById(R.id.timelineSeekBar)
-
         subtitleList.layoutManager=LinearLayoutManager(this)
         subtitleAdapter=SubtitleAdapter(emptyList(),emptyList()){selectSubtitle(it,true)}
         subtitleList.adapter=subtitleAdapter
-
         searchInput.addTextChangedListener(object:android.text.TextWatcher{
             override fun beforeTextChanged(s:CharSequence?,st:Int,c:Int,a:Int)=Unit
             override fun onTextChanged(s:CharSequence?,st:Int,b:Int,c:Int){if(restoringSearch)return;searchQuery=s?.toString()?.trim() ?: "";applySearch()}
@@ -283,12 +260,45 @@ class MainActivity : AppCompatActivity() {
     }catch(e:Exception){Toast.makeText(this,"Error: ${e.message}",Toast.LENGTH_LONG).show()}}
 
     private fun applySearch(){
-        val wasSearching=searchQuery.isNotBlank();val filtered=filteredSubtitles();subtitleAdapter.setItems(filtered)
+        val wasSearching=searchQuery.isNotBlank()
+        val lm=subtitleList.layoutManager as? LinearLayoutManager
+        val selectedIndexBefore=searchSelectedPosition.takeIf{it in subtitles.indices} ?: explicitlySelectedPosition.takeIf{it in subtitles.indices} ?: currentPosition
+        val selectedViewBefore=selectedIndexBefore.takeIf{it in subtitles.indices}?.let{subtitleAdapter.visiblePositionOf(subtitles[it])}
+        val selectedOffsetBefore=if(selectedViewBefore!=null && selectedViewBefore>=0){lm?.findViewByPosition(selectedViewBefore)?.let{lm.getDecoratedTop(it)-subtitleList.paddingTop}} else null
+        val filtered=filteredSubtitles()
+        subtitleAdapter.setItems(filtered)
+
         if(wasSearching&&filtered.isEmpty()){emptyText.text=getString(R.string.no_search_results);emptyText.visibility=View.VISIBLE;return}
         emptyText.text=getString(R.string.open_subtitle_message)
-        val anchor=when{searchSelectedPosition in subtitles.indices->searchSelectedPosition;explicitlySelectedPosition in subtitles.indices->explicitlySelectedPosition;else->currentPosition}
-        if(anchor in subtitles.indices){currentPosition=anchor;explicitlySelectedPosition=anchor;subtitleAdapter.setCurrentIndex(subtitles[anchor].index)}
+
+        // A search result is an explicit selection. Clearing the search must keep that exact
+        // subtitle selected; it must never fall back to subtitle 1.
+        val anchor=when{
+            searchSelectedPosition in subtitles.indices->searchSelectedPosition
+            explicitlySelectedPosition in subtitles.indices->explicitlySelectedPosition
+            else->currentPosition
+        }
+        if(anchor in subtitles.indices){
+            currentPosition=anchor
+            explicitlySelectedPosition=anchor
+            subtitleAdapter.setCurrentIndex(subtitles[anchor].index)
+        }
         updateUi()
+
+        // notifyDataSetChanged() resets the RecyclerView viewport to the beginning. When the
+        // search field is cleared, restore the selected conversation's previous on-screen offset
+        // instead of allowing the full list to jump to item 1.
+        if(!wasSearching && anchor in subtitles.indices){
+            subtitleList.post{
+                val manager=subtitleList.layoutManager as? LinearLayoutManager ?: return@post
+                val visible=subtitleAdapter.visiblePositionOf(subtitles[anchor])
+                if(visible>=0){
+                    val offset=selectedOffsetBefore ?: 0
+                    manager.scrollToPositionWithOffset(visible,offset)
+                }
+            }
+        }
+
         if(!wasSearching&&searchSelectedPosition in subtitles.indices)searchSelectedPosition=-1
     }
     private fun filteredSubtitles():List<Subtitle>{if(searchQuery.isBlank())return subtitles;val q=searchQuery.lowercase(Locale.getDefault());return subtitles.filter{s->s.index.toString().contains(searchQuery)||s.text.lowercase(Locale.getDefault()).contains(q)}}
