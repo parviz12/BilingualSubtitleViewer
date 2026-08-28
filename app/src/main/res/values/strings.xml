@@ -2,28 +2,14 @@
 
 <resources>
 
-    <string name="app_name">
-        Bilingual Subtitle Viewer
-    </string>
-
-    <string name="open_subtitle">
-        Open SRT
-    </string>
-
-    <string name="no_file">
-        No file
-    </string>
-
-    <string name="no_subtitle">
-        Open a subtitle file
-    </string>
-
-    <string name="previous">
-        Previous
-    </string>
-
-    <string name="next">
-        Next
-    </string>
+    <string name="app_name">Bilingual Subtitle Viewer</string>
+    <string name="open">Open SRT</string>
+    <string name="previous">◀ Previous</string>
+    <string name="next">Next ▶</string>
+    <string name="no_file">No subtitle file selected</string>
+    <string name="open_subtitle_message">Open an SRT subtitle file</string>
+    <string name="subtitle_file">Subtitle</string>
+    <string name="empty_file">The subtitle file is empty.</string>
+    <string name="no_subtitles">No valid subtitles were found.</string>
 
 </resources>

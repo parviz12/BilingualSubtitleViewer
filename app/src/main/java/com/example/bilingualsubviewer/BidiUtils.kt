@@ -1,30 +1,34 @@
 package com.example.bilingualsubviewer
 
-import android.view.View
+import android.text.BidiFormatter
+import android.text.TextDirectionHeuristic
+import android.text.TextDirectionHeuristics
 
 object BidiUtils {
 
-    fun applyDirection(
-        view: View,
-        text: String
-    ) {
+    private val formatter = BidiFormatter.getInstance()
 
-        val hasRtl = text.any {
+    fun format(text: String): String {
 
-            val direction =
-                Character.getDirectionality(it)
+        if (text.isBlank()) return text
 
-            direction ==
-                    Character.DIRECTIONALITY_RIGHT_TO_LEFT ||
-                    direction ==
-                    Character.DIRECTIONALITY_RIGHT_TO_LEFT_ARABIC
-        }
-
-        view.textDirection =
-            if (hasRtl) {
-                View.TEXT_DIRECTION_ANY_RTL
+        val direction: TextDirectionHeuristic =
+            if (containsPersianOrArabic(text)) {
+                TextDirectionHeuristics.RTL
             } else {
-                View.TEXT_DIRECTION_LTR
+                TextDirectionHeuristics.LTR
             }
+
+        return formatter.unicodeWrap(text, direction)
+    }
+
+    private fun containsPersianOrArabic(text: String): Boolean {
+        return text.any {
+            (it in '\u0600'..'\u06FF') ||
+            (it in '\u0750'..'\u077F') ||
+            (it in '\u08A0'..'\u08FF') ||
+            (it in '\uFB50'..'\uFDFF') ||
+            (it in '\uFE70'..'\uFEFF')
+        }
     }
 }

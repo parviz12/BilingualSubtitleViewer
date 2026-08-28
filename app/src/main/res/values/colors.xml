@@ -2,8 +2,10 @@
 
 <resources>
 
-    <color name="background">
-        #FFFFFF
-    </color>
+    <color name="background">#FAFAFA</color>
+    <color name="panel">#EEEEEE</color>
+
+    <color name="text_primary">#202124</color>
+    <color name="text_secondary">#5F6368</color>
 
 </resources>

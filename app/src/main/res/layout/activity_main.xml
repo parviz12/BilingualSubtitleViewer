@@ -2,89 +2,130 @@
 
 <LinearLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/rootContainer"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:padding="12dp">
+    android:background="@color/background">
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="horizontal">
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:paddingStart="12dp"
+        android:paddingEnd="12dp"
+        android:paddingTop="8dp"
+        android:paddingBottom="8dp">
 
-        <Button
-            android:id="@+id/buttonOpen"
+        <TextView
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="@string/open_subtitle" />
+            android:text="@string/app_name"
+            android:textStyle="bold"
+            android:textSize="18sp"
+            android:textColor="@color/text_primary" />
 
-        <TextView
-            android:id="@+id/textFileName"
-            android:layout_width="0dp"
+        <Button
+            android:id="@+id/openButton"
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_weight="2"
-            android:gravity="center"
-            android:padding="8dp"
-            android:text="@string/no_file"
-            android:textSize="14sp" />
+            android:minHeight="44dp"
+            android:text="@string/open"
+            android:textAllCaps="false" />
 
     </LinearLayout>
 
     <TextView
-        android:id="@+id/textPosition"
+        android:id="@+id/fileNameText"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:gravity="center"
-        android:padding="8dp"
-        android:text="0 / 0"
-        android:textSize="14sp" />
+        android:paddingStart="12dp"
+        android:paddingEnd="12dp"
+        android:paddingBottom="6dp"
+        android:text="@string/no_file"
+        android:textSize="13sp"
+        android:textColor="@color/text_secondary" />
 
     <TextView
-        android:id="@+id/textTime"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:gravity="center"
-        android:text="00:00:00,000 --> 00:00:00,000"
-        android:textSize="13sp" />
-
-    <ScrollView
+        android:id="@+id/emptyText"
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"
-        android:fillViewport="true">
+        android:gravity="center"
+        android:text="@string/open_subtitle_message"
+        android:textSize="16sp"
+        android:textColor="@color/text_secondary"
+        android:padding="24dp" />
 
-        <TextView
-            android:id="@+id/textSubtitle"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:gravity="center"
-            android:padding="20dp"
-            android:text="@string/no_subtitle"
-            android:textIsSelectable="true"
-            android:textSize="24sp"
-            android:lineSpacingExtra="8dp" />
-
-    </ScrollView>
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/subtitleList"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:clipToPadding="false"
+        android:paddingTop="4dp"
+        android:paddingBottom="4dp"
+        android:overScrollMode="ifContentScrolls" />
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="horizontal">
+        android:orientation="vertical"
+        android:padding="8dp"
+        android:background="@color/panel">
 
-        <Button
-            android:id="@+id/buttonPrevious"
-            android:layout_width="0dp"
+        <TextView
+            android:id="@+id/currentSubtitleText"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="@string/previous" />
+            android:minHeight="64dp"
+            android:gravity="center"
+            android:textSize="18sp"
+            android:lineSpacingExtra="3dp"
+            android:textColor="@color/text_primary"
+            android:paddingStart="12dp"
+            android:paddingEnd="12dp"
+            android:paddingTop="8dp"
+            android:paddingBottom="8dp"
+            android:textIsSelectable="true" />
 
-        <Button
-            android:id="@+id/buttonNext"
-            android:layout_width="0dp"
+        <TextView
+            android:id="@+id/positionText"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="@string/next" />
+            android:gravity="center"
+            android:text="0 / 0"
+            android:textSize="13sp"
+            android:textColor="@color/text_secondary"
+            android:paddingTop="2dp"
+            android:paddingBottom="4dp" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+
+            <Button
+                android:id="@+id/previousButton"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:minHeight="44dp"
+                android:text="@string/previous"
+                android:textAllCaps="false" />
+
+            <Button
+                android:id="@+id/nextButton"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:minHeight="44dp"
+                android:text="@string/next"
+                android:textAllCaps="false" />
+
+        </LinearLayout>
 
     </LinearLayout>
 

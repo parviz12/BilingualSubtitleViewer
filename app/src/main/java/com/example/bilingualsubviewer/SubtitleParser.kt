@@ -2,6 +2,9 @@ package com.example.bilingualsubviewer
 
 object SubtitleParser {
 
+    private val timeRegex =
+        Regex("""(\d{2}):(\d{2}):(\d{2}),(\d{3})\s*-->\s*(\d{2}):(\d{2}):(\d{2}),(\d{3})""")
+
     fun parse(content: String): List<Subtitle> {
 
         val normalized = content
@@ -14,37 +17,51 @@ object SubtitleParser {
 
         val result = mutableListOf<Subtitle>()
 
-        for (block in blocks) {
+        for ((position, block) in blocks.withIndex()) {
 
             val lines = block.lines()
 
-            if (lines.size < 3) {
-                continue
+            if (lines.isEmpty()) continue
+
+            var timeLineIndex = -1
+
+            for (i in lines.indices) {
+                if (timeRegex.containsMatchIn(lines[i])) {
+                    timeLineIndex = i
+                    break
+                }
             }
 
-            val index = lines[0].trim().toIntOrNull()
-                ?: continue
+            if (timeLineIndex < 0) continue
 
-            val timing = lines[1].split("-->")
+            val match = timeRegex.find(lines[timeLineIndex]) ?: continue
 
-            if (timing.size != 2) {
-                continue
-            }
+            val start = parseTime(
+                match.groupValues[1],
+                match.groupValues[2],
+                match.groupValues[3],
+                match.groupValues[4]
+            )
 
-            val start = parseTime(timing[0].trim())
-                ?: continue
-
-            val end = parseTime(timing[1].trim())
-                ?: continue
+            val end = parseTime(
+                match.groupValues[5],
+                match.groupValues[6],
+                match.groupValues[7],
+                match.groupValues[8]
+            )
 
             val text = lines
-                .drop(2)
+                .drop(timeLineIndex + 1)
                 .joinToString("\n")
                 .trim()
 
-            if (text.isEmpty()) {
-                continue
-            }
+            if (text.isEmpty()) continue
+
+            val index =
+                lines.firstOrNull()
+                    ?.trim()
+                    ?.toIntOrNull()
+                    ?: (position + 1)
 
             result.add(
                 Subtitle(
@@ -59,40 +76,18 @@ object SubtitleParser {
         return result
     }
 
-    private fun parseTime(value: String): Long? {
+    private fun parseTime(
+        hours: String,
+        minutes: String,
+        seconds: String,
+        milliseconds: String
+    ): Long {
 
-        val normalized = value.replace(',', '.')
-
-        val parts = normalized.split(":")
-
-        if (parts.size != 3) {
-            return null
-        }
-
-        val hours = parts[0].toLongOrNull()
-            ?: return null
-
-        val minutes = parts[1].toLongOrNull()
-            ?: return null
-
-        val secondsParts = parts[2].split(".")
-
-        val seconds = secondsParts[0].toLongOrNull()
-            ?: return null
-
-        val milliseconds =
-            if (secondsParts.size > 1) {
-                secondsParts[1]
-                    .padEnd(3, '0')
-                    .take(3)
-                    .toLongOrNull() ?: 0
-            } else {
-                0
-            }
-
-        return hours * 3_600_000L +
-                minutes * 60_000L +
-                seconds * 1_000L +
-                milliseconds
+        return (
+            hours.toLong() * 3_600_000L +
+            minutes.toLong() * 60_000L +
+            seconds.toLong() * 1_000L +
+            milliseconds.toLong()
+        )
     }
 }
