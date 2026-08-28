@@ -2,11 +2,15 @@
 <resources>
     <string name="app_name">Bilingual Subtitle Viewer</string>
     <string name="open">Open SRT</string>
+    <string name="open_media">Open Media</string>
+    <string name="hide_video">👁 Hide Video</string>
+    <string name="show_video">🎬 Show Video</string>
     <string name="previous">◀ Previous</string>
     <string name="next">Next ▶</string>
     <string name="no_file">No subtitle file selected</string>
-    <string name="open_subtitle_message">Open an SRT subtitle file</string>
+    <string name="media_file">Media</string>
     <string name="subtitle_file">Subtitle</string>
+    <string name="open_subtitle_message">Open an SRT subtitle file</string>
     <string name="empty_file">The subtitle file is empty.</string>
     <string name="no_subtitles">No valid subtitles were found.</string>
     <string name="search_hint">Search by line number or conversation…</string>
