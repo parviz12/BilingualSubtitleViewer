@@ -114,8 +114,7 @@
         android:layout_marginBottom="0dp"
         android:background="#000000"
         android:visibility="visible"
-        app:show_timeout="0"
-        app:controller_auto_show="true" />
+        app:show_timeout="0" />
 
     <androidx.media3.ui.PlayerControlView
         android:id="@+id/playerControls"
@@ -125,8 +124,7 @@
         android:layout_marginEnd="2dp"
         android:visibility="gone"
         app:show_timeout="0"
-        app:show_rewind_button="true"
-        app:show_fast_forward_button="true" />
+        app:show_rewind_button="true" />
 
     <EditText
         android:id="@+id/searchInput"
