@@ -73,7 +73,6 @@ class MainActivity : AppCompatActivity() {
         nextButton = findViewById(R.id.nextButton)
         emptyText = findViewById(R.id.emptyText)
         searchInput = findViewById(R.id.searchInput)
-
         subtitleList.layoutManager = LinearLayoutManager(this)
         subtitleAdapter = SubtitleAdapter(emptyList(), subtitles) { selectSubtitle(it) }
         subtitleList.adapter = subtitleAdapter
@@ -176,23 +175,22 @@ class MainActivity : AppCompatActivity() {
     private fun selectSubtitle(position: Int) {
         if (position !in subtitles.indices) return
         currentPosition = position
-        subtitleList.smoothScrollToPosition(subtitles.indexOfFirst { it.index == subtitles[position].index && it.startTime == subtitles[position].startTime })
+        val visiblePosition = subtitleAdapter.visiblePositionOf(subtitles[position])
+        if (visiblePosition >= 0) subtitleList.smoothScrollToPosition(visiblePosition)
         updateUi()
     }
 
     private fun nextSubtitle() {
         if (subtitles.isNotEmpty() && currentPosition < subtitles.lastIndex) {
             currentPosition++
-            subtitleList.smoothScrollToPosition(currentPosition)
-            updateUi()
+            selectSubtitle(currentPosition)
         }
     }
 
     private fun previousSubtitle() {
         if (subtitles.isNotEmpty() && currentPosition > 0) {
             currentPosition--
-            subtitleList.smoothScrollToPosition(currentPosition)
-            updateUi()
+            selectSubtitle(currentPosition)
         }
     }
 
@@ -218,13 +216,10 @@ class MainActivity : AppCompatActivity() {
         private var allItems: List<Subtitle>,
         private val onClick: (Int) -> Unit
     ) : RecyclerView.Adapter<SubtitleAdapter.ViewHolder>() {
-        fun setAllItems(items: List<Subtitle>) {
-            allItems = items
-        }
-        fun setItems(newItems: List<Subtitle>) {
-            items = newItems
-            notifyDataSetChanged()
-        }
+        fun setAllItems(items: List<Subtitle>) { allItems = items }
+        fun setItems(newItems: List<Subtitle>) { items = newItems; notifyDataSetChanged() }
+        fun visiblePositionOf(subtitle: Subtitle): Int =
+            items.indexOfFirst { it.index == subtitle.index && it.startTime == subtitle.startTime }
         override fun onCreateViewHolder(parent: android.view.ViewGroup, viewType: Int): ViewHolder = ViewHolder(
             android.view.LayoutInflater.from(parent.context).inflate(R.layout.item_subtitle, parent, false)
         )
