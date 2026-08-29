@@ -21,6 +21,8 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.SeekParameters
+import androidx.media3.exoplayer.source.ClippingMediaSource
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.PlayerView
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -68,17 +70,12 @@ class MainActivity : AppCompatActivity() {
     private var loopGuard = false
     private var userSeeking = false
     private var playSingleSubtitle = false
-    private var singleSubtitleEndMs = -1L
-    // Hard boundaries for single-conversation playback. Seeking is asynchronous,
-    // so playback must not start until the requested subtitle start is reached.
-    private var pendingSingleStartMs = -1L
-    private var pendingSingleSeek = false
-    private var pendingSeekAttempts = 0
-    // Audio is muted during an asynchronous single-subtitle seek. This is an
-    // additional safety layer for codecs that briefly output decoded audio
-    // from the old position before the seek discontinuity is applied.
-    private var pendingSeekRestoreVolume = 1f
-    private var pendingSeekMuted = false
+    // A tapped subtitle is played from an actual clipped MediaSource rather than
+    // seeking inside the already-running full source.
+    private var loadedMediaUri: Uri? = null
+    private var singleClipActive = false
+    private var singleClipStartMs = -1L
+    private var singleClipEndMs = -1L
     private var restoringSearch = false
 
     private var restoringOrientation = false
@@ -94,7 +91,7 @@ class MainActivity : AppCompatActivity() {
         override fun run() {
             syncSubtitleToPlayer()
             updatePlaybackControls()
-            handler.postDelayed(this, if (playSingleSubtitle || pendingSingleSeek) 20 else 100)
+            handler.postDelayed(this, if (playSingleSubtitle) 25 else 100)
         }
     }
 
@@ -246,15 +243,8 @@ class MainActivity : AppCompatActivity() {
         timelineSeekBar.setOnSeekBarChangeListener(object:SeekBar.OnSeekBarChangeListener{
             override fun onStartTrackingTouch(s:SeekBar){userSeeking=true}
             override fun onStopTrackingTouch(s:SeekBar){
-                player?.seekTo(s.progress.toLong())
-                playSingleSubtitle=false
-                pendingSingleSeek=false
-                pendingSingleStartMs=-1L
-                singleSubtitleEndMs=-1L
-                if(pendingSeekMuted){
-                    player?.volume=pendingSeekRestoreVolume
-                    pendingSeekMuted=false
-                }
+                val target=s.progress.toLong()
+                restoreFullSource(target, player?.playWhenReady == true)
                 userSeeking=false
             }
             override fun onProgressChanged(s:SeekBar,p:Int,fromUser:Boolean){if(fromUser)currentTimeText.text=formatDuration(p.toLong())}
@@ -268,65 +258,101 @@ class MainActivity : AppCompatActivity() {
     }
     private fun togglePlayback(){
         player?.let{
-            playSingleSubtitle=false
-            pendingSingleSeek=false
-            pendingSingleStartMs=-1L
-            singleSubtitleEndMs=-1L
-            if(pendingSeekMuted){
-                it.volume=pendingSeekRestoreVolume
-                pendingSeekMuted=false
-            }
+            // A clipped source is intentionally retained for play/pause, so resume
+            // can never continue into the adjacent subtitle.
+            if(!singleClipActive) playSingleSubtitle=false
             it.playWhenReady=!it.playWhenReady
             updatePlaybackControls()
         }
     }
 
     private fun loadMedia(uri:Uri){try{
-        if(player==null){player=ExoPlayer.Builder(this).build().also{exo->playerView.player=exo;exo.setSeekParameters(SeekParameters.EXACT);exo.addListener(object:Player.Listener{
-                override fun onPlaybackStateChanged(s:Int){
-                    if(s==Player.STATE_ENDED){
-                        playSingleSubtitle=false
-                        pendingSingleSeek=false
-                        pendingSingleStartMs=-1L
-                        singleSubtitleEndMs=-1L
+        if(player==null){
+            player=ExoPlayer.Builder(this).build().also{exo->
+                playerView.player=exo
+                exo.setSeekParameters(SeekParameters.EXACT)
+                exo.addListener(object:Player.Listener{
+                    override fun onPlaybackStateChanged(s:Int){
+                        if(s==Player.STATE_ENDED && singleClipActive) playSingleSubtitle=false
+                        updatePlaybackControls()
                     }
-                    updatePlaybackControls()
-                }
-
-                override fun onPositionDiscontinuity(oldPosition: Player.PositionInfo, newPosition: Player.PositionInfo, reason: Int) {
-                    if (!pendingSingleSeek || reason != Player.DISCONTINUITY_REASON_SEEK) return
-                    val target = pendingSingleStartMs
-                    if (target < 0L) return
-                    val actual = player?.currentPosition ?: return
-
-                    // Some media formats can land slightly before/after the requested timestamp.
-                    // Never start the selected conversation until the start boundary is reached.
-                    if (kotlin.math.abs(actual - target) > 15L && pendingSeekAttempts < 3) {
-                        pendingSeekAttempts++
-                        player?.setSeekParameters(SeekParameters.EXACT)
-                        player?.seekTo(target)
-                        return
-                    }
-
-                    pendingSingleSeek = false
-                    pendingSingleStartMs = -1L
-                    pendingSeekAttempts = 0
-                    if(pendingSeekMuted){
-                        player?.volume = pendingSeekRestoreVolume
-                        pendingSeekMuted = false
-                    }
-                    player?.playWhenReady = true
-                }
-            })}}
-        playSingleSubtitle=false;pendingSingleSeek=false;pendingSingleStartMs=-1L;singleSubtitleEndMs=-1L;player?.setMediaItem(MediaItem.fromUri(uri));player?.setPlaybackSpeed(playbackSpeed);player?.prepare();player?.playWhenReady=true
-        mediaFileName=uri.lastPathSegment?:getString(R.string.media_file);fileNameText.text=mediaFileName;videoHidden=false;playerView.visibility=View.VISIBLE;playerView.alpha=1f;playerView.requestLayout();playerControls.visibility=View.VISIBLE;videoToggleButton.visibility=View.VISIBLE;speedButton.visibility=View.VISIBLE;loopButton.visibility=View.VISIBLE;videoToggleButton.text=getString(R.string.hide_video);updatePlaybackControls()
+                })
+            }
+        }
+        loadedMediaUri=uri
+        singleClipActive=false
+        playSingleSubtitle=false
+        singleClipStartMs=-1L
+        singleClipEndMs=-1L
+        player?.setMediaItem(MediaItem.fromUri(uri))
+        player?.setPlaybackSpeed(playbackSpeed)
+        player?.prepare()
+        player?.playWhenReady=true
+        mediaFileName=uri.lastPathSegment?:getString(R.string.media_file)
+        fileNameText.text=mediaFileName
+        videoHidden=false
+        playerView.visibility=View.VISIBLE
+        playerView.alpha=1f
+        playerView.requestLayout()
+        playerControls.visibility=View.VISIBLE
+        videoToggleButton.visibility=View.VISIBLE
+        speedButton.visibility=View.VISIBLE
+        loopButton.visibility=View.VISIBLE
+        videoToggleButton.text=getString(R.string.hide_video)
+        updatePlaybackControls()
     }catch(e:Exception){Toast.makeText(this,"Media error: ${e.message}",Toast.LENGTH_LONG).show()}}
+
+    private fun restoreFullSource(positionMs:Long, play:Boolean){
+        val uri=loadedMediaUri ?: return
+        val exo=player ?: return
+        if(singleClipActive){
+            exo.pause()
+            exo.setMediaItem(MediaItem.fromUri(uri))
+            exo.setPlaybackSpeed(playbackSpeed)
+            exo.prepare()
+        }
+        singleClipActive=false
+        playSingleSubtitle=false
+        singleClipStartMs=-1L
+        singleClipEndMs=-1L
+        exo.seekTo(positionMs.coerceAtLeast(0L))
+        exo.playWhenReady=play
+    }
+
+    private fun playSingleSubtitleClip(subtitle:Subtitle){
+        val uri=loadedMediaUri ?: run {
+            player?.seekTo((subtitle.startTime-subtitleOffsetMs).coerceAtLeast(0L))
+            player?.playWhenReady=true
+            return
+        }
+        val exo=player ?: return
+        val startMs=(subtitle.startTime-subtitleOffsetMs).coerceAtLeast(0L)
+        val endMs=(subtitle.endTime-subtitleOffsetMs).coerceAtLeast(startMs+1L)
+
+        // Replacing the source, instead of seeking, flushes the old read/decode
+        // pipeline. The clip then owns hard start and end boundaries.
+        exo.pause()
+        exo.playWhenReady=false
+        exo.setSeekParameters(SeekParameters.EXACT)
+        val child=DefaultMediaSourceFactory(this).createMediaSource(MediaItem.fromUri(uri))
+        val clipped=ClippingMediaSource(child,startMs*1000L,endMs*1000L)
+
+        singleClipActive=true
+        playSingleSubtitle=true
+        singleClipStartMs=startMs
+        singleClipEndMs=endMs
+        exo.setMediaSource(clipped)
+        exo.setPlaybackSpeed(playbackSpeed)
+        exo.prepare()
+        exo.playWhenReady=true
+    }
+
     private fun showFullFileName(){val name=mediaFileName.ifBlank{fileNameText.text?.toString().orEmpty()};if(name.isNotBlank())AlertDialog.Builder(this).setTitle(getString(R.string.media_file)).setMessage(name).setPositiveButton(android.R.string.ok,null).show()}
     private fun toggleVideo(){if(player==null)return;videoHidden=!videoHidden;playerView.visibility=if(videoHidden)View.GONE else View.VISIBLE;playerControls.visibility=View.VISIBLE;videoToggleButton.text=if(videoHidden)getString(R.string.show_video)else getString(R.string.hide_video);showStatus(if(videoHidden)"🎧 Audio Only — video hidden" else "🎬 Video shown")}
 
     private fun loadSubtitle(uri:Uri){try{
         val text=contentResolver.openInputStream(uri)?.use{BufferedReader(InputStreamReader(it,Charsets.UTF_8)).readText()};if(text.isNullOrBlank()){Toast.makeText(this,getString(R.string.empty_file),Toast.LENGTH_SHORT).show();return};val parsed=SubtitleParser.parse(text);if(parsed.isEmpty()){Toast.makeText(this,getString(R.string.no_subtitles),Toast.LENGTH_LONG).show();return}
-        subtitles=parsed;currentPosition=0;explicitlySelectedPosition=0;searchSelectedPosition=-1;repeatCount=0;playSingleSubtitle=false;pendingSingleSeek=false;pendingSingleStartMs=-1L;singleSubtitleEndMs=-1L;subtitleOffsetMs=0;searchQuery="";restoringSearch=true;searchInput.setText("");restoringSearch=false
+        subtitles=parsed;currentPosition=0;explicitlySelectedPosition=0;searchSelectedPosition=-1;repeatCount=0;playSingleSubtitle=false;singleClipActive=false;singleClipStartMs=-1L;singleClipEndMs=-1L;subtitleOffsetMs=0;searchQuery="";restoringSearch=true;searchInput.setText("");restoringSearch=false
         if(player==null){mediaFileName=uri.lastPathSegment?:getString(R.string.subtitle_file);fileNameText.text=mediaFileName};subtitleAdapter.setAllItems(subtitles);applySearch();syncSubtitleToPlayer()
     }catch(e:Exception){Toast.makeText(this,"Error: ${e.message}",Toast.LENGTH_LONG).show()}}
 
@@ -354,38 +380,9 @@ class MainActivity : AppCompatActivity() {
         explicitlySelectedPosition=i
         if(searchQuery.isNotBlank())searchSelectedPosition=i
         repeatCount=0
-        playSingleSubtitle=singlePlay
         val s=subtitles[i]
-        val startMs=(s.startTime-subtitleOffsetMs).coerceAtLeast(0)
-        singleSubtitleEndMs=if(singlePlay)s.endTime else -1L
-        player?.setSeekParameters(SeekParameters.EXACT)
-
-        if(singlePlay){
-            // Pause first: this prevents a few frames of the previous conversation
-            // from being audible while the asynchronous seek is being completed.
-            pendingSingleStartMs=startMs
-            pendingSingleSeek=true
-            pendingSeekAttempts=0
-            // Mute BEFORE the asynchronous seek. Even if the underlying codec
-            // briefly emits buffered audio from the previous conversation, it
-            // cannot reach the speaker.
-            player?.let { exo ->
-                if(!pendingSeekMuted){
-                    pendingSeekRestoreVolume=exo.volume
-                    pendingSeekMuted=true
-                }
-                exo.volume=0f
-                exo.pause()
-                exo.playWhenReady=false
-                exo.seekTo(startMs)
-            }
-        }else{
-            pendingSingleSeek=false
-            pendingSingleStartMs=-1L
-            pendingSeekAttempts=0
-            player?.seekTo(startMs)
-            player?.playWhenReady=true
-        }
+        if(singlePlay) playSingleSubtitleClip(s)
+        else restoreFullSource((s.startTime-subtitleOffsetMs).coerceAtLeast(0L),true)
         scrollToSubtitle(s)
         updateUi()
         updatePlaybackControls()
@@ -394,67 +391,36 @@ class MainActivity : AppCompatActivity() {
     private fun syncSubtitleToPlayer(){
         val p=player?:return
         if(subtitles.isEmpty())return
-        val time=p.currentPosition+subtitleOffsetMs
 
-        // Single-conversation playback has an absolute end boundary. Do not derive the stop
-        // condition from the currently detected subtitle index: a timestamp jump can already
-        // place the player on the next subtitle and previously caused the selected conversation
-        // to continue into the next one or stop at the wrong point.
-        if(pendingSingleSeek){
-            // Keep the player paused until the exact seek boundary is reached.
-            // Do not rely only on onPositionDiscontinuity: some devices/codecs
-            // can complete a seek without the callback timing being suitable for
-            // audio gating. Polling here guarantees that old audio stays muted.
-            if(p.playWhenReady) p.playWhenReady=false
-            val target=pendingSingleStartMs
-            if(target>=0L && kotlin.math.abs(p.currentPosition-target)<=15L){
-                pendingSingleSeek=false
-                pendingSingleStartMs=-1L
-                pendingSeekAttempts=0
-                if(pendingSeekMuted){
-                    p.volume=pendingSeekRestoreVolume
-                    pendingSeekMuted=false
-                }
-                p.playWhenReady=true
-            }
-            return
-        }
-
-        if(playSingleSubtitle){
-            // Hard start guard: if a decoder reports a timestamp slightly before the selected
-            // subtitle, correct it while paused instead of leaking audio from the previous cue.
-            if(currentPosition in subtitles.indices){
-                val selectedStart=(subtitles[currentPosition].startTime-subtitleOffsetMs).coerceAtLeast(0)
-                if(time < selectedStart){
-                    p.pause()
-                    p.playWhenReady=false
-                    pendingSingleStartMs=selectedStart
-                    pendingSingleSeek=true
-                    pendingSeekAttempts=0
-                    p.setSeekParameters(SeekParameters.EXACT)
-                    p.seekTo(selectedStart)
-                    return
-                }
-            }
-
-            // Hard end boundary checked every 20 ms during single-conversation playback.
-            if(singleSubtitleEndMs>=0L && time>=singleSubtitleEndMs){
+        // The ClippingMediaSource itself enforces the selected conversation's
+        // boundaries, so no timestamp/index race is involved here.
+        if(singleClipActive){
+            if(p.playbackState==Player.STATE_ENDED){
                 p.pause()
-                p.playWhenReady=false
                 playSingleSubtitle=false
-                pendingSingleSeek=false
-                pendingSingleStartMs=-1L
-                singleSubtitleEndMs=-1L
-                showStatus("⏹ Conversation finished")
-                return
             }
             return
         }
 
+        val time=p.currentPosition+subtitleOffsetMs
         val i=subtitles.indexOfLast{it.startTime<=time}
         if(i>=0&&time<subtitles[i].endTime){
-            if(i!=currentPosition){currentPosition=i;updateUi();if(!restoringOrientation)scrollToSubtitle(subtitles[i])}
-            if(loopSubtitle&&time>=subtitles[i].endTime-250&&!loopGuard){loopGuard=true;repeatCount++;if(repeatCount>=repeatTarget){repeatCount=0;showStatus("🔁 Loop: 5/5 — continuing")};p.seekTo((subtitles[i].startTime-subtitleOffsetMs).coerceAtLeast(0));p.playWhenReady=true;handler.postDelayed({loopGuard=false},350)}
+            if(i!=currentPosition){
+                currentPosition=i
+                updateUi()
+                if(!restoringOrientation)scrollToSubtitle(subtitles[i])
+            }
+            if(loopSubtitle&&time>=subtitles[i].endTime-250&&!loopGuard){
+                loopGuard=true
+                repeatCount++
+                if(repeatCount>=repeatTarget){
+                    repeatCount=0
+                    showStatus("🔁 Loop: 5/5 — continuing")
+                }
+                p.seekTo((subtitles[i].startTime-subtitleOffsetMs).coerceAtLeast(0))
+                p.playWhenReady=true
+                handler.postDelayed({loopGuard=false},350)
+            }
         }
     }
     private fun scrollToSubtitle(s:Subtitle){if(restoringOrientation)return;val p=subtitleAdapter.visiblePositionOf(s);if(p>=0)subtitleList.smoothScrollToPosition(p)}
