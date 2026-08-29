@@ -74,6 +74,11 @@ class MainActivity : AppCompatActivity() {
     private var pendingSingleStartMs = -1L
     private var pendingSingleSeek = false
     private var pendingSeekAttempts = 0
+    // Audio is muted during an asynchronous single-subtitle seek. This is an
+    // additional safety layer for codecs that briefly output decoded audio
+    // from the old position before the seek discontinuity is applied.
+    private var pendingSeekRestoreVolume = 1f
+    private var pendingSeekMuted = false
     private var restoringSearch = false
 
     private var restoringOrientation = false
@@ -246,6 +251,10 @@ class MainActivity : AppCompatActivity() {
                 pendingSingleSeek=false
                 pendingSingleStartMs=-1L
                 singleSubtitleEndMs=-1L
+                if(pendingSeekMuted){
+                    player?.volume=pendingSeekRestoreVolume
+                    pendingSeekMuted=false
+                }
                 userSeeking=false
             }
             override fun onProgressChanged(s:SeekBar,p:Int,fromUser:Boolean){if(fromUser)currentTimeText.text=formatDuration(p.toLong())}
@@ -263,6 +272,10 @@ class MainActivity : AppCompatActivity() {
             pendingSingleSeek=false
             pendingSingleStartMs=-1L
             singleSubtitleEndMs=-1L
+            if(pendingSeekMuted){
+                it.volume=pendingSeekRestoreVolume
+                pendingSeekMuted=false
+            }
             it.playWhenReady=!it.playWhenReady
             updatePlaybackControls()
         }
@@ -298,6 +311,10 @@ class MainActivity : AppCompatActivity() {
                     pendingSingleSeek = false
                     pendingSingleStartMs = -1L
                     pendingSeekAttempts = 0
+                    if(pendingSeekMuted){
+                        player?.volume = pendingSeekRestoreVolume
+                        pendingSeekMuted = false
+                    }
                     player?.playWhenReady = true
                 }
             })}}
@@ -349,9 +366,19 @@ class MainActivity : AppCompatActivity() {
             pendingSingleStartMs=startMs
             pendingSingleSeek=true
             pendingSeekAttempts=0
-            player?.pause()
-            player?.playWhenReady=false
-            player?.seekTo(startMs)
+            // Mute BEFORE the asynchronous seek. Even if the underlying codec
+            // briefly emits buffered audio from the previous conversation, it
+            // cannot reach the speaker.
+            player?.let { exo ->
+                if(!pendingSeekMuted){
+                    pendingSeekRestoreVolume=exo.volume
+                    pendingSeekMuted=true
+                }
+                exo.volume=0f
+                exo.pause()
+                exo.playWhenReady=false
+                exo.seekTo(startMs)
+            }
         }else{
             pendingSingleSeek=false
             pendingSingleStartMs=-1L
@@ -374,8 +401,22 @@ class MainActivity : AppCompatActivity() {
         // place the player on the next subtitle and previously caused the selected conversation
         // to continue into the next one or stop at the wrong point.
         if(pendingSingleSeek){
-            // Keep the player paused until Player.Listener confirms the seek boundary.
+            // Keep the player paused until the exact seek boundary is reached.
+            // Do not rely only on onPositionDiscontinuity: some devices/codecs
+            // can complete a seek without the callback timing being suitable for
+            // audio gating. Polling here guarantees that old audio stays muted.
             if(p.playWhenReady) p.playWhenReady=false
+            val target=pendingSingleStartMs
+            if(target>=0L && kotlin.math.abs(p.currentPosition-target)<=15L){
+                pendingSingleSeek=false
+                pendingSingleStartMs=-1L
+                pendingSeekAttempts=0
+                if(pendingSeekMuted){
+                    p.volume=pendingSeekRestoreVolume
+                    pendingSeekMuted=false
+                }
+                p.playWhenReady=true
+            }
             return
         }
 
