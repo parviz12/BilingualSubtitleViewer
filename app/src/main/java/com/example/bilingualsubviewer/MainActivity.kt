@@ -257,13 +257,22 @@ class MainActivity : AppCompatActivity() {
         mediaButton.setOnClickListener{openMedia.launch(arrayOf("video/*","audio/*","application/octet-stream"))};videoToggleButton.setOnClickListener{toggleVideo()};speedButton.setOnClickListener{showSpeedMenu()};loopButton.setOnClickListener{toggleLoop()};previousButton.setOnClickListener{previousSubtitle()};nextButton.setOnClickListener{nextSubtitle()};playPauseButton.setOnClickListener{togglePlayback()};navigationPlayPauseButton.setOnClickListener{togglePlayback()};fileNameText.setOnClickListener{showFullFileName()}
     }
     private fun togglePlayback(){
-        player?.let{
-            // A clipped source is intentionally retained for play/pause, so resume
-            // can never continue into the adjacent subtitle.
-            if(!singleClipActive) playSingleSubtitle=false
-            it.playWhenReady=!it.playWhenReady
-            updatePlaybackControls()
+        val exo=player ?: return
+
+        // A tap on a conversation creates a clipped source so that only that
+        // conversation can play. The global Play/Pause buttons, however, are
+        // intended for normal continuous playback. Therefore, leaving a clip
+        // must first restore the original full media source at the equivalent
+        // absolute timestamp.
+        if(singleClipActive){
+            val absolutePosition=(singleClipStartMs+exo.currentPosition).coerceAtLeast(0L)
+            val shouldPlay=!exo.isPlaying
+            restoreFullSource(absolutePosition,shouldPlay)
+        }else{
+            playSingleSubtitle=false
+            exo.playWhenReady=!exo.playWhenReady
         }
+        updatePlaybackControls()
     }
 
     private fun loadMedia(uri:Uri){try{
